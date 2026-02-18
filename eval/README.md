@@ -148,10 +148,12 @@ Useful flags:
   `--wandb-run-name/--wandb-entity/--wandb-tags` as needed.
 - `--eval-fraction-epoch` to trigger evals at a fraction of each epoch (e.g., 0.5 for mid-epoch) and
   `--eval-every-epoch` to always evaluate at epoch boundaries.
+- `--lora-rank` to enable LoRA adapter tuning (`0` disables LoRA). Pair with
+  `--lora-alpha/--lora-dropout/--lora-bias/--lora-target-modules` for custom setups.
 
 Scripts:
-- `eval/scripts/train_model.sh <model-name>` – run one model for 1 epoch with mid-epoch eval (defaults configurable via env). Run from the repo root (`AuthBench`); the script sets `PYTHONPATH=$(pwd)` so package imports resolve.
-- `eval/scripts/train_all_models.sh` – loop over every registry model with the same settings. Run from the repo root; `PYTHONPATH` is set for you.
+- `eval/scripts/train_model.sh <model-name>` – run one model for 1 epoch with mid-epoch eval and LoRA (rank 16 by default; override with `LORA_RANK`). Results are written under `eval/results/training_summary/<model>/`.
+- `eval/scripts/train_all_models.sh` – train the default top-2 models per group (LLM-base, LLM-instruct, Embedding, Embedding-instruct) with LoRA rank 16. Override the list with `MODELS="m1 m2 ..."`.
 - `eval/scripts/eval_all_models.sh` – evaluate a broad set of embedding models (or override via `MODELS="m1 m2"`) and store per-model JSON outputs with fine-grained breakdowns for leaderboard building.
 
 Checkpoints are saved under `--output-dir/<model>` with a `training_summary.json` that

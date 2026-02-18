@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import argparse
+from functools import partial
 import json
 import math
 import random
+import re
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple, Union
 import sys
 
 import numpy as np
@@ -120,7 +122,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--pooling", choices=("mean", "cls", "last"), default="mean")
     parser.add_argument("--temperature", type=float, default=0.05)
     parser.add_argument("--grad-accum", type=int, default=1, help="Gradient accumulation steps.")
-    parser.add_argument("--num-workers", type=int, default=2)
+    parser.add_argument("--num-workers", type=int, default=0)
     parser.add_argument("--device", default=None)
     parser.add_argument("--fp16", action="store_true")
     parser.add_argument("--query-prefix", default="")
@@ -135,6 +137,30 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--negatives-per-query", type=int, default=50)
     parser.add_argument("--negative-strategy", choices=("sample", "all"), default="sample")
     parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument(
+        "--lora-rank",
+        type=int,
+        default=0,
+        help="LoRA rank. Set >0 to enable LoRA adapters (e.g., 16).",
+    )
+    parser.add_argument(
+        "--lora-alpha",
+        type=int,
+        help="LoRA alpha. Defaults to 2x rank when --lora-rank > 0.",
+    )
+    parser.add_argument("--lora-dropout", type=float, default=0.0, help="LoRA dropout probability.")
+    parser.add_argument(
+        "--lora-bias",
+        choices=("none", "all", "lora_only"),
+        default="none",
+        help="Bias training strategy for LoRA adapters.",
+    )
+    parser.add_argument(
+        "--lora-target-modules",
+        nargs="+",
+        default=["all-linear"],
+        help="LoRA target modules (space or comma separated). Use all-linear for broad coverage.",
+    )
     parser.add_argument(
         "--eval-ks",
         type=int,
@@ -215,10 +241,96 @@ def _init_wandb(args: argparse.Namespace):
             "negative_strategy": args.negative_strategy,
             "late_interaction": args.late_interaction,
             "eval_ks": args.eval_ks,
+            "lora_rank": args.lora_rank,
+            "lora_alpha": args.lora_alpha,
+            "lora_dropout": args.lora_dropout,
+            "lora_bias": args.lora_bias,
+            "lora_target_modules": args.lora_target_modules,
             "dataset_root": str(args.dataset_root),
         },
     )
     return run
+
+
+def _resolve_lora_target_modules(raw_targets: List[str]) -> Union[str, List[str]]:
+    parsed: List[str] = []
+    for item in raw_targets:
+        for token in re.split(r"[\s,]+", item):
+            token = token.strip()
+            if token:
+                parsed.append(token)
+    if not parsed:
+        return "all-linear"
+    if len(parsed) == 1 and parsed[0] in {"all", "all-linear"}:
+        return "all-linear"
+    return parsed
+
+
+def _enable_padding(tokenizer, model) -> None:
+    if tokenizer.pad_token is None:
+        if tokenizer.eos_token:
+            tokenizer.pad_token = tokenizer.eos_token
+        else:
+            tokenizer.add_special_tokens({"pad_token": "[PAD]"})
+            model.resize_token_embeddings(len(tokenizer))
+    if getattr(model.config, "pad_token_id", None) is None:
+        model.config.pad_token_id = tokenizer.pad_token_id
+
+
+def _count_parameters(model) -> Tuple[int, int]:
+    trainable = sum(param.numel() for param in model.parameters() if param.requires_grad)
+    total = sum(param.numel() for param in model.parameters())
+    return trainable, total
+
+
+def _apply_lora_if_enabled(model, args: argparse.Namespace) -> Tuple[torch.nn.Module, Dict[str, object]]:
+    lora_details: Dict[str, object] = {
+        "enabled": False,
+        "rank": 0,
+        "alpha": None,
+        "dropout": 0.0,
+        "bias": "none",
+        "target_modules": [],
+    }
+    if args.lora_rank <= 0:
+        return model, lora_details
+
+    try:
+        from peft import LoraConfig, TaskType, get_peft_model
+    except ImportError as exc:
+        raise RuntimeError(
+            "LoRA requested (--lora-rank > 0) but `peft` is not installed. "
+            "Install peft to enable adapter training."
+        ) from exc
+
+    lora_alpha = args.lora_alpha if args.lora_alpha is not None else args.lora_rank * 2
+    target_modules = _resolve_lora_target_modules(args.lora_target_modules)
+    lora_config = LoraConfig(
+        r=args.lora_rank,
+        lora_alpha=lora_alpha,
+        lora_dropout=args.lora_dropout,
+        bias=args.lora_bias,
+        task_type=TaskType.FEATURE_EXTRACTION,
+        target_modules=target_modules,
+    )
+    model = get_peft_model(model, lora_config)
+    print(
+        "Applied LoRA adapters "
+        f"(rank={args.lora_rank}, alpha={lora_alpha}, dropout={args.lora_dropout}, "
+        f"target_modules={target_modules})."
+    )
+    if hasattr(model, "print_trainable_parameters"):
+        model.print_trainable_parameters()
+
+    lora_details = {
+        "enabled": True,
+        "rank": args.lora_rank,
+        "alpha": lora_alpha,
+        "dropout": args.lora_dropout,
+        "bias": args.lora_bias,
+        "target_modules": target_modules,
+    }
+    return model, lora_details
 
 
 def run_evaluations(
@@ -276,6 +388,8 @@ def _log_eval_to_wandb(wandb_run, eval_payload: Dict[str, object], prefix: str) 
 
 def train() -> int:
     args = parse_args()
+    if args.lora_rank < 0:
+        raise ValueError("--lora-rank must be >= 0.")
     eval_ks = sorted({k for k in args.eval_ks if k > 0})
     if not eval_ks:
         raise ValueError("eval_ks must contain at least one positive integer.")
@@ -312,11 +426,15 @@ def train() -> int:
     model = load_model(
         model_name, trust_remote_code=args.trust_remote_code, allow_remote_code_fallback=allow_remote_code_fallback
     )
+    _enable_padding(tokenizer, model)
+    model, lora_details = _apply_lora_if_enabled(model, args)
     model.to(device)
+    trainable_params, total_params = _count_parameters(model)
+    print(f"Trainable parameters: {trainable_params:,} / {total_params:,}")
 
     train_dataset = PairDataset(train_pairs)
-    collate = lambda batch: collate_pairs(
-        batch,
+    collate = partial(
+        collate_pairs,
         tokenizer=tokenizer,
         max_length=args.max_length,
         query_prefix=args.query_prefix,
@@ -338,7 +456,10 @@ def train() -> int:
         eval_every_steps = 1
 
     total_steps = args.max_steps or math.ceil(len(train_loader) * args.epochs)
-    optimizer = torch.optim.AdamW(model.parameters(), lr=args.learning_rate, weight_decay=args.weight_decay)
+    trainable_parameters = [param for param in model.parameters() if param.requires_grad]
+    if not trainable_parameters:
+        raise RuntimeError("No trainable parameters found; check LoRA config and model setup.")
+    optimizer = torch.optim.AdamW(trainable_parameters, lr=args.learning_rate, weight_decay=args.weight_decay)
     scheduler = get_linear_schedule_with_warmup(
         optimizer, num_warmup_steps=args.warmup_steps, num_training_steps=total_steps
     )
@@ -428,6 +549,9 @@ def train() -> int:
                 "pooling": args.pooling,
                 "max_length": args.max_length,
                 "eval_ks": args.eval_ks,
+                "lora": lora_details,
+                "trainable_params": trainable_params,
+                "total_params": total_params,
                 "loss_history": loss_history,
                 "eval_history": eval_history,
                 "dev_metrics": final_dev,

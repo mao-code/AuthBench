@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Train every registered model for 1 epoch with mid-epoch evaluation.
+# Train selected models for 1 epoch with mid-epoch evaluation.
 # Run from the repository root (AuthBench).
 set -euo pipefail
 
@@ -16,25 +16,54 @@ WANDB_TAGS="${WANDB_TAGS:-AuthBench train-all}"
 DATASET_ROOT="${DATASET_ROOT:-processing/outputs/official_ttl300k_cap10M_sf10k_postprocessed_balanced}"
 OUTPUT_DIR="${OUTPUT_DIR:-eval/results/training_summary}"
 BATCH_SIZE="${BATCH_SIZE:-16}"
+NUM_WORKERS="${NUM_WORKERS:-0}"
 EVAL_FRACTION="${EVAL_FRACTION:-0.5}"
 EVAL_KS="${EVAL_KS:-5}"
+LORA_RANK="${LORA_RANK:-16}"
+LORA_DROPOUT="${LORA_DROPOUT:-0.0}"
+LORA_TARGET_MODULES="${LORA_TARGET_MODULES:-all-linear}"
 
-MODELS=(
-  "e5-large-v2"
-  "multilingual-e5-large"
-  "bge-large-en-v1.5"
-  # "bge-base-en-v1.5"
-  # "bge-m3"
-  # "snowflake-arctic/-embed-l-v2"
-  # "jina-embeddings-v2-base-en"
-  # "mxbai-embed-large-v1"
-  # "gte-large-en-v1.5"
-  # "nv-embed-v1"
-  "qwen3-embedding-0.6b"
-  # "nomic-embed-text-v1"
-  # "sfr-embedding-mistral" # 7B parameters
-  # "all-minilm-l12-v2"
+if [[ -n "${MODELS:-}" ]]; then
+  # Override with `MODELS="m1 m2 ..."` if desired.
+  read -r -a MODELS <<<"${MODELS}"
+else
+  MODELS=(
+    # LLM-instruct
+    "qwen2.5-3b-instruct"
+    "llama3-8b-instruct"
+    # LLM-base
+    "qwen2.5-3b"
+    "llama3-8b"
+    # Embedding-instruct
+    "gte-qwen2-7b-instruct"
+    "sfr-embedding-mistral"
+    # Embedding
+    "multilingual-e5-large"
+    "qwen3-embedding-4b"
+  )
+fi
+
+COMMON_ARGS=(
+  --epochs 1
+  --batch-size "$BATCH_SIZE"
+  --num-workers "$NUM_WORKERS"
+  --eval-fraction-epoch "$EVAL_FRACTION"
+  --eval-every-epoch
+  --eval-ks $EVAL_KS
+  --dataset-root "$DATASET_ROOT"
+  --output-dir "$OUTPUT_DIR"
+  --skip-checkpoint
+  --lora-rank "$LORA_RANK"
+  --lora-dropout "$LORA_DROPOUT"
+  --lora-target-modules "$LORA_TARGET_MODULES"
 )
+
+if [[ -n "${LORA_ALPHA:-}" ]]; then
+  COMMON_ARGS+=(--lora-alpha "$LORA_ALPHA")
+fi
+if [[ -n "${LORA_BIAS:-}" ]]; then
+  COMMON_ARGS+=(--lora-bias "$LORA_BIAS")
+fi
 
 for MODEL in "${MODELS[@]}"; do
   echo ">>> Training ${MODEL} ..."
@@ -53,14 +82,7 @@ for MODEL in "${MODELS[@]}"; do
 
   python eval/train.py \
     --model "$MODEL" \
-    --epochs 1 \
-    --batch-size "$BATCH_SIZE" \
-    --eval-fraction-epoch "$EVAL_FRACTION" \
-    --eval-every-epoch \
-    --eval-ks $EVAL_KS \
-    --dataset-root "$DATASET_ROOT" \
-    --output-dir "$OUTPUT_DIR" \
     --log-file "$OUTPUT_DIR/$MODEL/eval_history.jsonl" \
-    --skip-checkpoint \
+    "${COMMON_ARGS[@]}" \
     "${WANDB_ARGS[@]}"
 done
