@@ -15,7 +15,7 @@ WANDB_TAGS="${WANDB_TAGS:-AuthBench train-all}"
 
 DATASET_ROOT="${DATASET_ROOT:-processing/outputs/official_ttl300k_cap10M_sf10k_postprocessed_balanced}"
 OUTPUT_DIR="${OUTPUT_DIR:-eval/results/training_summary}"
-BATCH_SIZE="${BATCH_SIZE:-16}"
+BATCH_SIZE="${BATCH_SIZE:-1}"
 NUM_WORKERS="${NUM_WORKERS:-0}"
 EVAL_FRACTION="${EVAL_FRACTION:-0.5}"
 EVAL_KS="${EVAL_KS:-5}"
@@ -44,7 +44,7 @@ else
 fi
 
 COMMON_ARGS=(
-  --epochs 1
+  --epochs 2
   --batch-size "$BATCH_SIZE"
   --num-workers "$NUM_WORKERS"
   --eval-fraction-epoch "$EVAL_FRACTION"

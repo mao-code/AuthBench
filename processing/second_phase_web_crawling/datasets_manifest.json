@@ -1,0 +1,37 @@
+{
+  "datasets": [
+    {
+      "name": "stackexchange_web_crawl",
+      "source": "stackexchange",
+      "loader": "jsonl",
+      "path": "processing/second_phase_web_crawling/corpora/stackexchange/stackexchange.jsonl",
+      "text_field": "text",
+      "author_field": "author",
+      "lang_field": "lang",
+      "genre_field": "genre",
+      "raw_id_field": "raw_id"
+    },
+    {
+      "name": "project_gutenberg_web_crawl",
+      "source": "project_gutenberg",
+      "loader": "jsonl",
+      "path": "processing/second_phase_web_crawling/corpora/gutenberg/gutenberg.jsonl",
+      "text_field": "text",
+      "author_field": "author",
+      "lang_field": "lang",
+      "genre_field": "genre",
+      "raw_id_field": "raw_id"
+    },
+    {
+      "name": "wikisource_web_crawl",
+      "source": "wikisource",
+      "loader": "jsonl",
+      "path": "processing/second_phase_web_crawling/corpora/wikisource/wikisource.jsonl",
+      "text_field": "text",
+      "author_field": "author",
+      "lang_field": "lang",
+      "genre_field": "genre",
+      "raw_id_field": "raw_id"
+    }
+  ]
+}

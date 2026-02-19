@@ -1,0 +1,362 @@
+from __future__ import annotations
+
+import argparse
+import logging
+import subprocess
+import sys
+from pathlib import Path
+
+logger = logging.getLogger(__name__)
+
+
+def _run(cmd: list[str]) -> None:
+    logger.info("Running: %s", " ".join(cmd))
+    subprocess.run(cmd, check=True)
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description=(
+            "End-to-end runner for second-phase web crawling + the existing AuthBench "
+            "monitor/build/postprocess pipeline."
+        )
+    )
+    parser.add_argument(
+        "--stages",
+        nargs="+",
+        default=["crawl", "monitor", "build", "postprocess"],
+        choices=["crawl", "monitor", "build", "postprocess"],
+        help="Which stages to execute (default: all).",
+    )
+
+    parser.add_argument(
+        "--manifest-path",
+        type=Path,
+        default=Path("processing/second_phase_web_crawling/datasets_manifest.json"),
+    )
+
+    parser.add_argument(
+        "--stackexchange-output-path",
+        type=Path,
+        default=Path("processing/second_phase_web_crawling/corpora/stackexchange/stackexchange.jsonl"),
+    )
+    parser.add_argument(
+        "--gutenberg-output-path",
+        type=Path,
+        default=Path("processing/second_phase_web_crawling/corpora/gutenberg/gutenberg.jsonl"),
+    )
+    parser.add_argument(
+        "--wikisource-output-path",
+        type=Path,
+        default=Path("processing/second_phase_web_crawling/corpora/wikisource/wikisource.jsonl"),
+    )
+    parser.add_argument("--skip-stackexchange", action="store_true")
+    parser.add_argument("--skip-gutenberg", action="store_true")
+    parser.add_argument("--skip-wikisource", action="store_true")
+
+    # Stack Exchange crawler options
+    parser.add_argument(
+        "--stackexchange-sites",
+        default="stackoverflow.com,math.stackexchange.com,superuser.com",
+        help="Comma-separated sites to crawl.",
+    )
+    parser.add_argument(
+        "--stackexchange-archives-dir",
+        type=Path,
+        default=Path("processing/second_phase_web_crawling/downloads/stackexchange"),
+    )
+    parser.add_argument("--stackexchange-skip-comments", action="store_true")
+    parser.add_argument("--stackexchange-max-posts-per-site", type=int, default=200000)
+    parser.add_argument("--stackexchange-max-comments-per-site", type=int, default=100000)
+    parser.add_argument(
+        "--stackexchange-download-mode",
+        choices=["none", "archive", "api"],
+        default="none",
+        help="StackExchange ingestion mode (local/archive/api).",
+    )
+    parser.add_argument("--stackexchange-archive-identifier", default="stackexchange")
+
+    # Gutenberg crawler options
+    parser.add_argument("--gutenberg-max-docs", type=int, default=50000)
+    parser.add_argument(
+        "--gutenberg-languages",
+        default="en,es,fr,de,ru,ar,zh,ja,ko,hi",
+    )
+    parser.add_argument("--gutenberg-min-chars", type=int, default=500)
+    parser.add_argument("--gutenberg-refresh-catalog", action="store_true")
+
+    # Wikisource crawler options
+    parser.add_argument(
+        "--wikisource-wikis",
+        default="enwikisource,frwikisource,eswikisource,ruwikisource",
+    )
+    parser.add_argument("--wikisource-max-docs-per-wiki", type=int, default=20000)
+    parser.add_argument("--wikisource-max-total-docs", type=int, default=100000)
+    parser.add_argument("--wikisource-min-chars", type=int, default=500)
+
+    # Core processing options
+    parser.add_argument(
+        "--build-output-dir",
+        type=Path,
+        default=Path("processing/second_phase_web_crawling/outputs/stage1"),
+    )
+    parser.add_argument(
+        "--postprocess-output-dir",
+        type=Path,
+        default=Path("processing/second_phase_web_crawling/outputs/stage2"),
+    )
+    parser.add_argument(
+        "--monitor-report-path",
+        type=Path,
+        default=Path("processing/second_phase_web_crawling/outputs/monitoring/pipeline_dynamics.json"),
+    )
+    parser.add_argument("--monitor-overwrite", action="store_true")
+
+    parser.add_argument("--total-docs", type=int, default=100000)
+    parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--train-ratio", type=float, default=0.8)
+    parser.add_argument("--dev-ratio", type=float, default=0.1)
+    parser.add_argument("--test-ratio", type=float, default=0.1)
+    parser.add_argument("--allow-other-languages", action="store_true")
+    parser.add_argument("--max-documents-per-dataset", type=int, default=None)
+    parser.add_argument("--dataset-max-docs", nargs="*", default=[])
+    parser.add_argument("--shuffle-buffer-size", type=int, default=10000)
+    parser.add_argument("--no-shuffle-datasets", nargs="*", default=[])
+    parser.add_argument("--chunk-probability", type=float, default=0.7)
+    parser.add_argument("--truncate-to-tokens", type=int, default=2000)
+
+    parser.add_argument("--post-target-total", type=int, default=None)
+    parser.add_argument("--post-skip-langdetect", action="store_true")
+
+    parser.add_argument("--log-level", default="INFO")
+    return parser.parse_args()
+
+
+def run_crawl_stage(args: argparse.Namespace) -> None:
+    py = sys.executable
+
+    if not args.skip_stackexchange:
+        sites = [s.strip() for s in args.stackexchange_sites.split(",") if s.strip()]
+        cmd = [
+            py,
+            "-m",
+            "processing.second_phase_web_crawling.crawl_stackexchange",
+            "--input-archives-dir",
+            str(args.stackexchange_archives_dir),
+            "--output-path",
+            str(args.stackexchange_output_path),
+            "--download-mode",
+            args.stackexchange_download_mode,
+            "--archive-identifier",
+            args.stackexchange_archive_identifier,
+            "--max-posts-per-site",
+            str(args.stackexchange_max_posts_per_site),
+            "--max-comments-per-site",
+            str(args.stackexchange_max_comments_per_site),
+            "--sites",
+            *sites,
+            "--log-level",
+            args.log_level,
+        ]
+        if args.stackexchange_skip_comments:
+            cmd.append("--skip-comments")
+        _run(cmd)
+
+    if not args.skip_gutenberg:
+        cmd = [
+            py,
+            "-m",
+            "processing.second_phase_web_crawling.crawl_gutenberg",
+            "--output-path",
+            str(args.gutenberg_output_path),
+            "--languages",
+            args.gutenberg_languages,
+            "--max-docs",
+            str(args.gutenberg_max_docs),
+            "--min-chars",
+            str(args.gutenberg_min_chars),
+            "--log-level",
+            args.log_level,
+        ]
+        if args.gutenberg_refresh_catalog:
+            cmd.append("--refresh-catalog")
+        _run(cmd)
+
+    if not args.skip_wikisource:
+        cmd = [
+            py,
+            "-m",
+            "processing.second_phase_web_crawling.crawl_wikisource",
+            "--output-path",
+            str(args.wikisource_output_path),
+            "--wikis",
+            args.wikisource_wikis,
+            "--max-docs-per-wiki",
+            str(args.wikisource_max_docs_per_wiki),
+            "--max-total-docs",
+            str(args.wikisource_max_total_docs),
+            "--min-chars",
+            str(args.wikisource_min_chars),
+            "--log-level",
+            args.log_level,
+        ]
+        _run(cmd)
+
+    _run(
+        [
+            py,
+            "-m",
+            "processing.second_phase_web_crawling.build_manifest",
+            "--manifest-path",
+            str(args.manifest_path),
+            "--stackexchange-path",
+            str(args.stackexchange_output_path),
+            "--gutenberg-path",
+            str(args.gutenberg_output_path),
+            "--wikisource-path",
+            str(args.wikisource_output_path),
+            "--log-level",
+            args.log_level,
+        ]
+    )
+
+
+def run_monitor_stage(args: argparse.Namespace) -> None:
+    py = sys.executable
+    cmd = [
+        py,
+        "-m",
+        "processing.monitor_pipeline",
+        "--manifest",
+        str(args.manifest_path),
+        "--report-path",
+        str(args.monitor_report_path),
+        "--total-docs",
+        str(args.total_docs),
+        "--seed",
+        str(args.seed),
+        "--train-ratio",
+        str(args.train_ratio),
+        "--dev-ratio",
+        str(args.dev_ratio),
+        "--test-ratio",
+        str(args.test_ratio),
+        "--shuffle-buffer-size",
+        str(args.shuffle_buffer_size),
+        "--chunk-probability",
+        str(args.chunk_probability),
+        "--truncate-to-tokens",
+        str(args.truncate_to_tokens),
+        "--log-level",
+        args.log_level,
+    ]
+    if args.allow_other_languages:
+        cmd.append("--allow-other-languages")
+    if args.monitor_overwrite:
+        cmd.append("--overwrite")
+    if args.max_documents_per_dataset is not None:
+        cmd.extend(["--max-documents-per-dataset", str(args.max_documents_per_dataset)])
+    if args.dataset_max_docs:
+        cmd.extend(["--dataset-max-docs", *args.dataset_max_docs])
+    if args.no_shuffle_datasets:
+        cmd.extend(["--no-shuffle-datasets", *args.no_shuffle_datasets])
+    if args.post_target_total is not None:
+        cmd.extend(["--post-target-total", str(args.post_target_total)])
+    if args.post_skip_langdetect:
+        cmd.append("--post-skip-langdetect")
+    _run(cmd)
+
+
+def run_build_stage(args: argparse.Namespace) -> None:
+    py = sys.executable
+    cmd = [
+        py,
+        "-m",
+        "processing.build_benchmark",
+        "--manifest",
+        str(args.manifest_path),
+        "--output-dir",
+        str(args.build_output_dir),
+        "--total-docs",
+        str(args.total_docs),
+        "--seed",
+        str(args.seed),
+        "--train-ratio",
+        str(args.train_ratio),
+        "--dev-ratio",
+        str(args.dev_ratio),
+        "--test-ratio",
+        str(args.test_ratio),
+        "--shuffle-buffer-size",
+        str(args.shuffle_buffer_size),
+        "--chunk-probability",
+        str(args.chunk_probability),
+        "--truncate-to-tokens",
+        str(args.truncate_to_tokens),
+        "--log-level",
+        args.log_level,
+    ]
+    if args.allow_other_languages:
+        cmd.append("--allow-other-languages")
+    if args.max_documents_per_dataset is not None:
+        cmd.extend(["--max-documents-per-dataset", str(args.max_documents_per_dataset)])
+    if args.dataset_max_docs:
+        cmd.extend(["--dataset-max-docs", *args.dataset_max_docs])
+    if args.no_shuffle_datasets:
+        cmd.extend(["--no-shuffle-datasets", *args.no_shuffle_datasets])
+    _run(cmd)
+
+
+def run_postprocess_stage(args: argparse.Namespace) -> None:
+    py = sys.executable
+    cmd = [
+        py,
+        "-m",
+        "processing.postprocess",
+        "--input-dir",
+        str(args.build_output_dir),
+        "--output-dir",
+        str(args.postprocess_output_dir),
+        "--seed",
+        str(args.seed),
+        "--train-ratio",
+        str(args.train_ratio),
+        "--dev-ratio",
+        str(args.dev_ratio),
+        "--test-ratio",
+        str(args.test_ratio),
+        "--log-level",
+        args.log_level,
+    ]
+    if args.post_target_total is not None:
+        cmd.extend(["--target-total", str(args.post_target_total)])
+    if args.post_skip_langdetect:
+        cmd.append("--skip-langdetect")
+    _run(cmd)
+
+
+def main() -> None:
+    args = parse_args()
+    logging.basicConfig(
+        level=getattr(logging, args.log_level.upper(), logging.INFO),
+        format="%(asctime)s %(levelname)s %(message)s",
+    )
+
+    stages = set(args.stages)
+    if "crawl" not in stages and not args.manifest_path.exists():
+        raise FileNotFoundError(
+            f"Manifest not found at {args.manifest_path}. Run stage 'crawl' first or provide a manifest."
+        )
+
+    if "crawl" in stages:
+        run_crawl_stage(args)
+    if "monitor" in stages:
+        run_monitor_stage(args)
+    if "build" in stages:
+        run_build_stage(args)
+    if "postprocess" in stages:
+        run_postprocess_stage(args)
+
+
+if __name__ == "__main__":
+    main()
