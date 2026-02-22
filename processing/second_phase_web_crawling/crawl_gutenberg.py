@@ -112,7 +112,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--max-docs",
         type=int,
-        default=50000,
+        default=200000,
         help="Maximum kept documents.",
     )
     parser.add_argument(
@@ -239,4 +239,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

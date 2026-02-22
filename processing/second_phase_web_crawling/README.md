@@ -28,11 +28,17 @@ This folder adds new web-sourced corpora and keeps the downstream benchmark logi
      https://dumps.wikimedia.org/enwikisource/latest/
    - Crawler: `crawl_wikisource.py`
 
+4. YouTube comments (YouTube Data API v3)
+   - API overview:  
+     https://developers.google.com/youtube/v3/docs
+   - Crawler: `crawl_ytcomments.py` (expects `YOUTUBE_API_KEY`)
+
 ## Files
 
 - `crawl_stackexchange.py`: parses Stack Exchange `Posts.7z` (+ optional `Comments.7z`) into JSONL rows.
 - `crawl_gutenberg.py`: uses `pg_catalog.csv` + text URLs to build book/essay/speech rows.
 - `crawl_wikisource.py`: parses Wikisource XML dumps into plain-text rows with author heuristics.
+- `crawl_ytcomments.py`: collects multilingual YouTube top-level comments into JSONL rows.
 - `build_manifest.py`: builds a `processing`-compatible manifest for crawled JSONL files.
 - `run_pipeline.py`: end-to-end runner (crawl -> monitor -> build -> postprocess).
 
@@ -43,11 +49,12 @@ This folder adds new web-sourced corpora and keeps the downstream benchmark logi
 ```bash
 python -m processing.second_phase_web_crawling.run_pipeline \
   --stages crawl \
-  --stackexchange-download-mode none \
-  --stackexchange-sites stackoverflow.com,math.stackexchange.com \
+  --stackexchange-download-mode api \
+  --stackexchange-sites stackoverflow.com,es.stackoverflow.com,ru.stackoverflow.com \
   --gutenberg-max-docs 20000 \
   --wikisource-wikis enwikisource,frwikisource \
-  --wikisource-max-docs-per-wiki 10000
+  --wikisource-max-docs-per-wiki 10000 \
+  --ytcomments-max-docs 20000
 ```
 
 Notes:
@@ -55,6 +62,7 @@ Notes:
 - Stack Exchange comments are included by default; pass `--stackexchange-skip-comments` to disable.
 - `--stackexchange-download-mode api` fetches from the official Stack Exchange API (recommended for small smoke runs).
 - `--stackexchange-download-mode archive` exists for legacy/mirror workflows.
+- `crawl_ytcomments.py` uses YouTube Data API v3 key auth (`YOUTUBE_API_KEY` environment variable).
 
 ### 2) Run monitor/build/postprocess with the same pipeline logic
 
@@ -73,3 +81,9 @@ Outputs:
 - Monitor report: `processing/second_phase_web_crawling/outputs/monitoring/`
 - Stage-1 benchmark outputs: `processing/second_phase_web_crawling/outputs/stage1/`
 - Final postprocessed outputs: `processing/second_phase_web_crawling/outputs/stage2/`
+
+### 3) One-shot script for 4 datasets at 60K target
+
+```bash
+bash processing/second_phase_web_crawling/scripts/run_webcrawl_60k_all4.sh
+```

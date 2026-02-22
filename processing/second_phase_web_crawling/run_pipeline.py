@@ -50,14 +50,25 @@ def parse_args() -> argparse.Namespace:
         type=Path,
         default=Path("processing/second_phase_web_crawling/corpora/wikisource/wikisource.jsonl"),
     )
+    parser.add_argument(
+        "--ytcomments-output-path",
+        type=Path,
+        default=Path("processing/second_phase_web_crawling/corpora/ytcomments/ytcomments.jsonl"),
+    )
     parser.add_argument("--skip-stackexchange", action="store_true")
     parser.add_argument("--skip-gutenberg", action="store_true")
     parser.add_argument("--skip-wikisource", action="store_true")
+    parser.add_argument("--skip-ytcomments", action="store_true")
 
     # Stack Exchange crawler options
     parser.add_argument(
         "--stackexchange-sites",
-        default="stackoverflow.com,math.stackexchange.com,superuser.com",
+        default=(
+            "stackoverflow.com,es.stackoverflow.com,ru.stackoverflow.com,ja.stackoverflow.com,"
+            "spanish.stackexchange.com,french.stackexchange.com,german.stackexchange.com,"
+            "arabic.stackexchange.com,chinese.stackexchange.com,korean.stackexchange.com,"
+            "hindi.stackexchange.com"
+        ),
         help="Comma-separated sites to crawl.",
     )
     parser.add_argument(
@@ -77,7 +88,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--stackexchange-archive-identifier", default="stackexchange")
 
     # Gutenberg crawler options
-    parser.add_argument("--gutenberg-max-docs", type=int, default=50000)
+    parser.add_argument("--gutenberg-max-docs", type=int, default=200000)
     parser.add_argument(
         "--gutenberg-languages",
         default="en,es,fr,de,ru,ar,zh,ja,ko,hi",
@@ -88,11 +99,27 @@ def parse_args() -> argparse.Namespace:
     # Wikisource crawler options
     parser.add_argument(
         "--wikisource-wikis",
-        default="enwikisource,frwikisource,eswikisource,ruwikisource",
+        default="enwikisource,zhwikisource,hiwikisource,eswikisource,frwikisource,arwikisource,ruwikisource,dewikisource,jawikisource,kowikisource",
     )
     parser.add_argument("--wikisource-max-docs-per-wiki", type=int, default=20000)
-    parser.add_argument("--wikisource-max-total-docs", type=int, default=100000)
+    parser.add_argument("--wikisource-max-total-docs", type=int, default=200000)
     parser.add_argument("--wikisource-min-chars", type=int, default=500)
+
+    # YouTube comments crawler options
+    parser.add_argument("--ytcomments-max-docs", type=int, default=200000)
+    parser.add_argument(
+        "--ytcomments-languages",
+        default="en,zh,hi,es,fr,ar,ru,de,ja,ko",
+    )
+    parser.add_argument(
+        "--ytcomments-region-map",
+        default="en:US,zh:TW,hi:IN,es:ES,fr:FR,ar:EG,ru:RU,de:DE,ja:JP,ko:KR",
+    )
+    parser.add_argument("--ytcomments-max-video-pages-per-lang", type=int, default=50)
+    parser.add_argument("--ytcomments-max-comments-per-video", type=int, default=200)
+    parser.add_argument("--ytcomments-max-comment-pages-per-video", type=int, default=8)
+    parser.add_argument("--ytcomments-min-chars", type=int, default=20)
+    parser.add_argument("--ytcomments-skip-langdetect", action="store_true")
 
     # Core processing options
     parser.add_argument(
@@ -202,6 +229,34 @@ def run_crawl_stage(args: argparse.Namespace) -> None:
         ]
         _run(cmd)
 
+    if not args.skip_ytcomments:
+        cmd = [
+            py,
+            "-m",
+            "processing.second_phase_web_crawling.crawl_ytcomments",
+            "--output-path",
+            str(args.ytcomments_output_path),
+            "--languages",
+            args.ytcomments_languages,
+            "--max-docs",
+            str(args.ytcomments_max_docs),
+            "--region-map",
+            args.ytcomments_region_map,
+            "--max-video-pages-per-lang",
+            str(args.ytcomments_max_video_pages_per_lang),
+            "--max-comments-per-video",
+            str(args.ytcomments_max_comments_per_video),
+            "--max-comment-pages-per-video",
+            str(args.ytcomments_max_comment_pages_per_video),
+            "--min-chars",
+            str(args.ytcomments_min_chars),
+            "--log-level",
+            args.log_level,
+        ]
+        if args.ytcomments_skip_langdetect:
+            cmd.append("--skip-langdetect")
+        _run(cmd)
+
     _run(
         [
             py,
@@ -215,6 +270,8 @@ def run_crawl_stage(args: argparse.Namespace) -> None:
             str(args.gutenberg_output_path),
             "--wikisource-path",
             str(args.wikisource_output_path),
+            "--ytcomments-path",
+            str(args.ytcomments_output_path),
             "--log-level",
             args.log_level,
         ]

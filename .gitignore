@@ -8,6 +8,7 @@ build/
 venv/
 .env
 .env.*
+.env.stackexchange
 .DS_Store
 .ipynb_checkpoints/
 

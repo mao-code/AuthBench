@@ -39,7 +39,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
             "Build a processing-compatible manifest for second-phase crawled corpora "
-            "(Stack Exchange, Gutenberg, Wikisource)."
+            "(Stack Exchange, Gutenberg, Wikisource, YouTube comments)."
         )
     )
     parser.add_argument(
@@ -61,6 +61,11 @@ def parse_args() -> argparse.Namespace:
         "--wikisource-path",
         type=Path,
         default=Path("processing/second_phase_web_crawling/corpora/wikisource/wikisource.jsonl"),
+    )
+    parser.add_argument(
+        "--ytcomments-path",
+        type=Path,
+        default=Path("processing/second_phase_web_crawling/corpora/ytcomments/ytcomments.jsonl"),
     )
     parser.add_argument("--log-level", default="INFO")
     return parser.parse_args()
@@ -112,6 +117,18 @@ def main() -> None:
     else:
         logger.warning("Skipping missing Wikisource file: %s", args.wikisource_path)
 
+    if args.ytcomments_path.exists():
+        datasets.append(
+            dataset_entry(
+                name="ytcomments_web_crawl",
+                source="ytcomments",
+                path=args.ytcomments_path,
+                repo_root=repo_root,
+            )
+        )
+    else:
+        logger.warning("Skipping missing YouTube comments file: %s", args.ytcomments_path)
+
     if not datasets:
         raise RuntimeError("No crawled corpus files were found; cannot write an empty manifest.")
 
@@ -126,4 +143,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

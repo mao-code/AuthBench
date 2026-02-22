@@ -17,6 +17,12 @@ METRICS = [
 BASE_GROUPS = ["by_language", "by_genre", "by_length_bucket"]
 GROUPS = BASE_GROUPS + ["by_primary_genre"]
 ROLLING_WINDOW = 50
+EXCLUDED_MODELS = {
+    "bge-large-en-v1.5",
+    "e5-large-v2",
+    "qwen3-embedding-0.6b",
+}
+ALIGN_MODEL = "multilingual-e5-large"
 
 rcParams.update(
     {
@@ -131,9 +137,58 @@ def load_eval_metrics(history_path):
 
 def ensure_sorted(series):
     series = sorted(series, key=lambda item: item[0])
-    steps = [item[0] for item in series]
-    values = [item[1] for item in series]
+    by_step = {}
+    for step, value in series:
+        by_step[step] = value
+    steps = sorted(by_step.keys())
+    values = [by_step[step] for step in steps]
     return steps, values
+
+
+def infer_reference_steps(series_map, target_model):
+    counts = {}
+    for model_name, (steps, _) in series_map.items():
+        if model_name == target_model:
+            continue
+        key = tuple(steps)
+        if not key:
+            continue
+        counts[key] = counts.get(key, 0) + 1
+    if not counts:
+        return None
+    return set(max(counts.items(), key=lambda item: item[1])[0])
+
+
+def filter_series_steps(series, allowed_steps):
+    if not allowed_steps:
+        return series
+    steps, values = series
+    filtered = [(step, value) for step, value in zip(steps, values) if step in allowed_steps]
+    if not filtered:
+        return ([], [])
+    return ([step for step, _ in filtered], [value for _, value in filtered])
+
+
+def common_step_cap(series_map):
+    max_steps = [max(steps) for steps, _ in series_map.values() if steps]
+    if not max_steps:
+        return None
+    return min(max_steps)
+
+
+def clip_series_map(series_map, max_step):
+    if max_step is None:
+        return series_map
+    clipped = {}
+    for name, (steps, values) in series_map.items():
+        filtered = [(step, value) for step, value in zip(steps, values) if step <= max_step]
+        if not filtered:
+            continue
+        clipped[name] = (
+            [step for step, _ in filtered],
+            [value for _, value in filtered],
+        )
+    return clipped
 
 
 def primary_genre(genre):
@@ -222,8 +277,18 @@ def step_ticks(series_map):
     steps = [step for steps, _ in series_map.values() for step in steps]
     if not steps:
         return [0]
+    min_step = int(min(steps))
     max_step = int(max(steps))
-    return list(range(0, max_step + 1, 500))
+    if min_step == max_step:
+        return [min_step]
+
+    target_ticks = 6
+    span = max_step - min_step
+    step_size = max(1, int(round(span / (target_ticks - 1))))
+    ticks = list(range(min_step, max_step + 1, step_size))
+    if ticks[-1] != max_step:
+        ticks.append(max_step)
+    return ticks
 
 
 def legend_loc(metric_name):
@@ -240,7 +305,9 @@ def main():
     model_dirs = [
         path
         for path in base_dir.iterdir()
-        if path.is_dir() and (path / "training_summary.json").exists()
+        if path.is_dir()
+        and (path / "training_summary.json").exists()
+        and path.name not in EXCLUDED_MODELS
     ]
     if not model_dirs:
         raise SystemExit("No training summaries found.")
@@ -275,10 +342,44 @@ def main():
                 for group_name, metrics in grouped_metrics.items()
             }
 
+    allowed_steps_by_metric = {}
+    for metric_name, _ in METRICS:
+        if metric_name == "loss":
+            continue
+        series_map = series_by_metric.get(metric_name, {})
+        if ALIGN_MODEL not in series_map:
+            continue
+        allowed_steps = infer_reference_steps(series_map, ALIGN_MODEL)
+        if not allowed_steps:
+            continue
+        allowed_steps_by_metric[metric_name] = allowed_steps
+        filtered_series = filter_series_steps(series_map[ALIGN_MODEL], allowed_steps)
+        if filtered_series[0]:
+            series_map[ALIGN_MODEL] = filtered_series
+        else:
+            del series_map[ALIGN_MODEL]
+
+    if ALIGN_MODEL in grouped_by_model:
+        for _, metrics in grouped_by_model[ALIGN_MODEL].items():
+            for metric_name, categories in metrics.items():
+                allowed_steps = allowed_steps_by_metric.get(metric_name)
+                if not allowed_steps:
+                    continue
+                for category, series in list(categories.items()):
+                    filtered_series = filter_series_steps(series, allowed_steps)
+                    if filtered_series[0]:
+                        categories[category] = filtered_series
+                    else:
+                        del categories[category]
+
     panel_color = "#eef7f1"
+    metric_step_caps = {
+        metric_name: common_step_cap(series_by_metric.get(metric_name, {}))
+        for metric_name, _ in METRICS
+    }
 
     for metric_name, title in METRICS:
-        data = series_by_metric.get(metric_name, {})
+        data = clip_series_map(series_by_metric.get(metric_name, {}), metric_step_caps[metric_name])
         if not data:
             continue
         fig, ax = plt.subplots(figsize=(12, 8))
@@ -338,16 +439,17 @@ def main():
     for group_name, metrics in grouped_series.items():
         for metric_name, categories in metrics.items():
             for category, series_map in categories.items():
-                if not series_map:
+                clipped_series_map = clip_series_map(series_map, metric_step_caps[metric_name])
+                if not clipped_series_map:
                     continue
                 fig, ax = plt.subplots(figsize=(12, 8))
                 ax.set_facecolor(panel_color)
                 style_axes(ax)
 
-                baseline, top = bounds_from_series(series_map)
-                x_min, x_max = step_bounds(series_map)
-                x_ticks = step_ticks(series_map)
-                for model_name, (steps, values) in series_map.items():
+                baseline, top = bounds_from_series(clipped_series_map)
+                x_min, x_max = step_bounds(clipped_series_map)
+                x_ticks = step_ticks(clipped_series_map)
+                for model_name, (steps, values) in clipped_series_map.items():
                     line = ax.plot(steps, values, label=model_name, linewidth=3.8, zorder=3)
                     color = line[0].get_color()
                     ax.fill_between(steps, values, baseline, color=color, alpha=0.15, zorder=1)

@@ -4,6 +4,7 @@ import argparse
 import html
 import json
 import logging
+import os
 import re
 import shutil
 import subprocess
@@ -30,8 +31,10 @@ except Exception:  # pragma: no cover - optional dependency
 
 SITE_PREFIX_LANG_MAP = {
     "ru.": "ru",
+    "russian.": "ru",
     "rus.": "ru",
     "es.": "es",
+    "spanish.": "es",
     "pt.": "pt",
     "ja.": "ja",
     "japanese.": "ja",
@@ -107,7 +110,10 @@ def api_get(
     params: dict[str, object],
     timeout: int,
     retries: int,
+    api_key: str | None = None,
 ) -> dict:
+    if api_key:
+        params = {**params, "key": api_key}
     query = urlencode(params, doseq=True)
     url = f"{SE_API_BASE}/{endpoint}?{query}"
     payload = json.loads(http_get_text(url, timeout=timeout, retries=retries))
@@ -137,6 +143,7 @@ def crawl_site_via_api(
     max_comments: int | None,
     timeout: int,
     retries: int,
+    api_key: str | None,
 ) -> Counter:
     stats = Counter()
     target_posts = max_posts if max_posts is not None else 1000
@@ -152,19 +159,38 @@ def crawl_site_via_api(
     page = 1
     while stats["posts_kept"] < target_posts:
         page_size = min(100, target_posts - stats["posts_kept"])
-        payload = api_get(
-            "questions",
-            params={
-                "order": "desc",
-                "sort": "creation",
-                "site": api_site,
-                "filter": "withbody",
-                "pagesize": page_size,
-                "page": page,
-            },
-            timeout=timeout,
-            retries=retries,
-        )
+        try:
+            payload = api_get(
+                "questions",
+                params={
+                    "order": "desc",
+                    "sort": "creation",
+                    "site": api_site,
+                    "filter": "withbody",
+                    "pagesize": page_size,
+                    "page": page,
+                },
+                timeout=timeout,
+                retries=retries,
+                api_key=api_key,
+            )
+        except Exception as exc:
+            logger.warning(
+                "Stopping questions crawl for site=%s at page=%s due to API error: %s",
+                site,
+                page,
+                exc,
+            )
+            break
+        if payload.get("error_id") is not None:
+            logger.warning(
+                "Stopping questions crawl for site=%s at page=%s due to API response error: %s (%s)",
+                site,
+                page,
+                payload.get("error_name"),
+                payload.get("error_message"),
+            )
+            break
         _sleep_backoff(payload)
         items = payload.get("items") or []
         if not isinstance(items, list) or not items:
@@ -211,19 +237,38 @@ def crawl_site_via_api(
     page = 1
     while stats["posts_kept"] < target_posts:
         page_size = min(100, target_posts - stats["posts_kept"])
-        payload = api_get(
-            "answers",
-            params={
-                "order": "desc",
-                "sort": "creation",
-                "site": api_site,
-                "filter": "withbody",
-                "pagesize": page_size,
-                "page": page,
-            },
-            timeout=timeout,
-            retries=retries,
-        )
+        try:
+            payload = api_get(
+                "answers",
+                params={
+                    "order": "desc",
+                    "sort": "creation",
+                    "site": api_site,
+                    "filter": "withbody",
+                    "pagesize": page_size,
+                    "page": page,
+                },
+                timeout=timeout,
+                retries=retries,
+                api_key=api_key,
+            )
+        except Exception as exc:
+            logger.warning(
+                "Stopping answers crawl for site=%s at page=%s due to API error: %s",
+                site,
+                page,
+                exc,
+            )
+            break
+        if payload.get("error_id") is not None:
+            logger.warning(
+                "Stopping answers crawl for site=%s at page=%s due to API response error: %s (%s)",
+                site,
+                page,
+                payload.get("error_name"),
+                payload.get("error_message"),
+            )
+            break
         _sleep_backoff(payload)
         items = payload.get("items") or []
         if not isinstance(items, list) or not items:
@@ -270,19 +315,38 @@ def crawl_site_via_api(
         page = 1
         while stats["comments_kept"] < target_comments:
             page_size = min(100, target_comments - stats["comments_kept"])
-            payload = api_get(
-                "comments",
-                params={
-                    "order": "desc",
-                    "sort": "creation",
-                    "site": api_site,
-                    "filter": "withbody",
-                    "pagesize": page_size,
-                    "page": page,
-                },
-                timeout=timeout,
-                retries=retries,
-            )
+            try:
+                payload = api_get(
+                    "comments",
+                    params={
+                        "order": "desc",
+                        "sort": "creation",
+                        "site": api_site,
+                        "filter": "withbody",
+                        "pagesize": page_size,
+                        "page": page,
+                    },
+                    timeout=timeout,
+                    retries=retries,
+                    api_key=api_key,
+                )
+            except Exception as exc:
+                logger.warning(
+                    "Stopping comments crawl for site=%s at page=%s due to API error: %s",
+                    site,
+                    page,
+                    exc,
+                )
+                break
+            if payload.get("error_id") is not None:
+                logger.warning(
+                    "Stopping comments crawl for site=%s at page=%s due to API response error: %s (%s)",
+                    site,
+                    page,
+                    payload.get("error_name"),
+                    payload.get("error_message"),
+                )
+                break
             _sleep_backoff(payload)
             items = payload.get("items") or []
             if not isinstance(items, list) or not items:
@@ -548,7 +612,19 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--sites",
         nargs="*",
-        default=["stackoverflow.com"],
+        default=[
+            "stackoverflow.com",
+            "es.stackoverflow.com",
+            "ru.stackoverflow.com",
+            "ja.stackoverflow.com",
+            "spanish.stackexchange.com",
+            "french.stackexchange.com",
+            "german.stackexchange.com",
+            "arabic.stackexchange.com",
+            "chinese.stackexchange.com",
+            "korean.stackexchange.com",
+            "hindi.stackexchange.com",
+        ],
         help="Stack Exchange site dump prefixes (e.g., stackoverflow.com math.stackexchange.com).",
     )
     parser.add_argument(
@@ -594,6 +670,14 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--timeout", type=int, default=120)
     parser.add_argument("--retries", type=int, default=3)
+    parser.add_argument(
+        "--api-key",
+        default=os.getenv("STACKEXCHANGE_API_KEY"),
+        help=(
+            "Stack Exchange API key. Defaults to environment variable "
+            "STACKEXCHANGE_API_KEY."
+        ),
+    )
     parser.add_argument("--summary-path", type=Path, default=None)
     parser.add_argument("--log-level", default="INFO")
     return parser.parse_args()
@@ -619,6 +703,8 @@ def main() -> None:
         logger.info("Processing site=%s (lang=%s)", site, lang)
 
         if args.download_mode == "api":
+            if args.api_key:
+                logger.info("Using Stack Exchange API key from environment/CLI for site=%s", site)
             api_stats = crawl_site_via_api(
                 site=site,
                 lang=lang,
@@ -628,6 +714,7 @@ def main() -> None:
                 max_comments=args.max_comments_per_site,
                 timeout=args.timeout,
                 retries=args.retries,
+                api_key=args.api_key,
             )
             per_site_stats[site]["api"] = dict(api_stats)
             continue

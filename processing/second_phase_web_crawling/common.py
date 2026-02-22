@@ -61,6 +61,10 @@ def http_get_bytes(
                 return resp.read()
         except (HTTPError, URLError, TimeoutError) as exc:
             last_exc = exc
+            if isinstance(exc, HTTPError):
+                # Most 4xx responses (e.g., 404/406) are not recoverable.
+                if 400 <= exc.code < 500 and exc.code not in {408, 429}:
+                    break
             if attempt == retries:
                 break
             sleep_for = retry_backoff_sec * attempt
@@ -120,6 +124,10 @@ def download_file(
             last_exc = exc
             if tmp_path.exists():
                 tmp_path.unlink(missing_ok=True)
+            if isinstance(exc, HTTPError):
+                # Most 4xx responses are not recoverable by retry.
+                if 400 <= exc.code < 500 and exc.code not in {408, 429}:
+                    break
             if attempt == retries:
                 break
             sleep_for = retry_backoff_sec * attempt

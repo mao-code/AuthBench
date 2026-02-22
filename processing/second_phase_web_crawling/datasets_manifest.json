@@ -32,6 +32,17 @@
       "lang_field": "lang",
       "genre_field": "genre",
       "raw_id_field": "raw_id"
+    },
+    {
+      "name": "ytcomments_web_crawl",
+      "source": "ytcomments",
+      "loader": "jsonl",
+      "path": "processing/second_phase_web_crawling/corpora/ytcomments/ytcomments.jsonl",
+      "text_field": "text",
+      "author_field": "author",
+      "lang_field": "lang",
+      "genre_field": "genre",
+      "raw_id_field": "raw_id"
     }
   ]
 }

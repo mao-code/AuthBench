@@ -170,7 +170,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--wikis",
-        default="enwikisource,frwikisource,eswikisource,ruwikisource",
+        default="enwikisource,zhwikisource,hiwikisource,eswikisource,frwikisource,arwikisource,ruwikisource,dewikisource,jawikisource,kowikisource",
         help="Comma-separated Wikimedia dump project names (e.g., enwikisource).",
     )
     parser.add_argument(
@@ -194,7 +194,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--max-total-docs",
         type=int,
-        default=100000,
+        default=200000,
         help="Maximum kept docs overall.",
     )
     parser.add_argument(
@@ -304,4 +304,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
