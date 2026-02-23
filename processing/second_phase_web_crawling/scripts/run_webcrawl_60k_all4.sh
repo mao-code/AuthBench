@@ -60,8 +60,10 @@ YTCOMMENTS_REGION_MAP="${YTCOMMENTS_REGION_MAP:-en:US,zh:TW,hi:IN,es:ES,fr:FR,ar
 YTCOMMENTS_MAX_VIDEO_PAGES_PER_LANG="${YTCOMMENTS_MAX_VIDEO_PAGES_PER_LANG:-50}"
 YTCOMMENTS_MAX_COMMENTS_PER_VIDEO="${YTCOMMENTS_MAX_COMMENTS_PER_VIDEO:-200}"
 YTCOMMENTS_MAX_COMMENT_PAGES_PER_VIDEO="${YTCOMMENTS_MAX_COMMENT_PAGES_PER_VIDEO:-8}"
+YTCOMMENTS_MAX_EMPTY_PAGES_PER_VIDEO="${YTCOMMENTS_MAX_EMPTY_PAGES_PER_VIDEO:-2}"
 YTCOMMENTS_MIN_CHARS="${YTCOMMENTS_MIN_CHARS:-20}"
 YTCOMMENTS_SKIP_LANGDETECT="${YTCOMMENTS_SKIP_LANGDETECT:-0}"
+YTCOMMENTS_RESUME="${YTCOMMENTS_RESUME:-1}"
 YTCOMMENTS_TIMEOUT="${YTCOMMENTS_TIMEOUT:-60}"
 YTCOMMENTS_RETRIES="${YTCOMMENTS_RETRIES:-6}"
 YTCOMMENTS_RETRY_BACKOFF_SEC="${YTCOMMENTS_RETRY_BACKOFF_SEC:-2.0}"
@@ -176,6 +178,7 @@ while true; do
     --ytcomments-max-video-pages-per-lang "$YTCOMMENTS_MAX_VIDEO_PAGES_PER_LANG"
     --ytcomments-max-comments-per-video "$YTCOMMENTS_MAX_COMMENTS_PER_VIDEO"
     --ytcomments-max-comment-pages-per-video "$YTCOMMENTS_MAX_COMMENT_PAGES_PER_VIDEO"
+    --ytcomments-max-empty-pages-per-video "$YTCOMMENTS_MAX_EMPTY_PAGES_PER_VIDEO"
     --ytcomments-min-chars "$YTCOMMENTS_MIN_CHARS"
     --ytcomments-timeout "$YTCOMMENTS_TIMEOUT"
     --ytcomments-retries "$YTCOMMENTS_RETRIES"
@@ -201,6 +204,9 @@ while true; do
   fi
   if [[ "$YTCOMMENTS_SKIP_LANGDETECT" == "1" ]]; then
     CMD+=(--ytcomments-skip-langdetect)
+  fi
+  if [[ "$YTCOMMENTS_RESUME" == "1" ]]; then
+    CMD+=(--ytcomments-resume)
   fi
   if [[ "$SKIP_STACKEXCHANGE" == "1" ]]; then
     CMD+=(--skip-stackexchange)
@@ -284,3 +290,18 @@ if [[ -f "$POSTPROCESS_OUTPUT_DIR/postprocessing_summary.json" ]]; then
 fi
 
 echo "[3/3] Done"
+
+
+# YT_ONLY=1 \
+# PIPELINE_STAGES="crawl" \
+# AUTO_RAMP=0 \
+# YTCOMMENTS_RESUME=1 \
+# YTCOMMENTS_MAX_VIDEO_PAGES_PER_LANG=12 \
+# YTCOMMENTS_MAX_COMMENT_PAGES_PER_VIDEO=2 \
+# YTCOMMENTS_MAX_EMPTY_PAGES_PER_VIDEO=1 \
+# YTCOMMENTS_SLEEP_SECONDS=0.2 \
+# bash processing/second_phase_web_crawling/scripts/run_webcrawl_60k_all4.sh
+
+
+# PIPELINE_STAGES="construct" AUTO_RAMP=0 \
+# bash processing/second_phase_web_crawling/scripts/run_webcrawl_60k_all4.sh

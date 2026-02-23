@@ -14,11 +14,12 @@ DEFAULT_USER_AGENT = "AuthBenchSecondPhaseCrawler/1.0"
 
 
 class JSONLWriter:
-    def __init__(self, path: Path):
+    def __init__(self, path: Path, *, append: bool = False, initial_count: int = 0):
         self.path = path
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        self._fh = self.path.open("w", encoding="utf-8")
-        self.count = 0
+        mode = "a" if append else "w"
+        self._fh = self.path.open(mode, encoding="utf-8")
+        self.count = initial_count
 
     def write(self, row: dict) -> None:
         self._fh.write(json.dumps(row, ensure_ascii=False) + "\n")

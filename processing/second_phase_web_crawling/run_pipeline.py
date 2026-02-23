@@ -121,11 +121,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--ytcomments-max-video-pages-per-lang", type=int, default=50)
     parser.add_argument("--ytcomments-max-comments-per-video", type=int, default=200)
     parser.add_argument("--ytcomments-max-comment-pages-per-video", type=int, default=8)
+    parser.add_argument("--ytcomments-max-empty-pages-per-video", type=int, default=2)
     parser.add_argument("--ytcomments-min-chars", type=int, default=20)
     parser.add_argument("--ytcomments-timeout", type=int, default=60)
     parser.add_argument("--ytcomments-retries", type=int, default=3)
     parser.add_argument("--ytcomments-retry-backoff-sec", type=float, default=1.5)
     parser.add_argument("--ytcomments-sleep-seconds", type=float, default=0.0)
+    parser.add_argument("--ytcomments-resume", action="store_true")
     parser.add_argument("--ytcomments-skip-langdetect", action="store_true")
 
     # Core processing options
@@ -258,6 +260,8 @@ def run_crawl_stage(args: argparse.Namespace) -> None:
             str(args.ytcomments_max_comments_per_video),
             "--max-comment-pages-per-video",
             str(args.ytcomments_max_comment_pages_per_video),
+            "--max-empty-pages-per-video",
+            str(args.ytcomments_max_empty_pages_per_video),
             "--min-chars",
             str(args.ytcomments_min_chars),
             "--timeout",
@@ -271,6 +275,8 @@ def run_crawl_stage(args: argparse.Namespace) -> None:
             "--log-level",
             args.log_level,
         ]
+        if args.ytcomments_resume:
+            cmd.append("--resume")
         if args.ytcomments_skip_langdetect:
             cmd.append("--skip-langdetect")
         _run(cmd)

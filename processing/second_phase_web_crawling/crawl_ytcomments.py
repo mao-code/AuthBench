@@ -12,7 +12,7 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
-from .common import DEFAULT_USER_AGENT, JSONLWriter, normalize_whitespace, write_json
+from .common import DEFAULT_USER_AGENT, JSONLWriter, normalize_whitespace, read_jsonl, write_json
 
 logger = logging.getLogger(__name__)
 
@@ -46,10 +46,14 @@ NON_LATIN_LANGS = {"zh", "ja", "ko", "hi", "ar", "ru"}
 RETRYABLE_403_REASONS = {
     "backendError",
     "internalError",
-    "quotaExceeded",
     "rateLimitExceeded",
     "userRateLimitExceeded",
 }
+HARD_QUOTA_REASONS = {"quotaExceeded", "dailyLimitExceeded"}
+
+
+class YouTubeQuotaExceededError(RuntimeError):
+    pass
 
 try:
     from langdetect import LangDetectException, detect
@@ -205,6 +209,12 @@ def youtube_api_get(
             except json.JSONDecodeError:
                 message = body.strip()
 
+            if exc.code == 403 and reason in HARD_QUOTA_REASONS:
+                detail = message or body.strip() or str(exc)
+                raise YouTubeQuotaExceededError(
+                    f"Failed to fetch {url}: HTTP {exc.code} {detail} (reason={reason})"
+                ) from exc
+
             is_retryable_403 = exc.code == 403 and (not reason or reason in RETRYABLE_403_REASONS)
             if attempt < retries and (is_retryable_403 or exc.code in {408, 429, 500, 502, 503, 504}):
                 sleep_for = retry_backoff_sec * attempt
@@ -277,6 +287,7 @@ def crawl_comments_for_video(
     retry_backoff_sec: float,
     max_comments_per_video: int,
     max_comment_pages_per_video: int,
+    max_empty_pages_per_video: int,
     min_chars: int,
     use_langdetect: bool,
     langdetect_min_chars: int,
@@ -285,6 +296,7 @@ def crawl_comments_for_video(
     stats = Counter()
     next_page_token: str | None = None
     pages_scanned = 0
+    empty_pages_scanned = 0
 
     while (
         stats["rows_kept"] < keep_limit
@@ -305,6 +317,7 @@ def crawl_comments_for_video(
         if next_page_token:
             params["pageToken"] = next_page_token
 
+        kept_before_page = stats["rows_kept"]
         try:
             payload = youtube_api_get(
                 "commentThreads",
@@ -314,6 +327,8 @@ def crawl_comments_for_video(
                 retry_backoff_sec=retry_backoff_sec,
                 api_key=api_key,
             )
+        except YouTubeQuotaExceededError:
+            raise
         except Exception as exc:
             logger.warning("commentThreads failed for video=%s: %s", video_id, exc)
             stats["comment_api_errors"] += 1
@@ -404,6 +419,15 @@ def crawl_comments_for_video(
             )
             stats["rows_kept"] += 1
 
+        kept_this_page = stats["rows_kept"] - kept_before_page
+        if kept_this_page <= 0:
+            empty_pages_scanned += 1
+            if max_empty_pages_per_video > 0 and empty_pages_scanned >= max_empty_pages_per_video:
+                stats["early_stopped_empty_pages"] += 1
+                break
+        else:
+            empty_pages_scanned = 0
+
         next_page_token = payload.get("nextPageToken")
         if not next_page_token:
             break
@@ -456,6 +480,12 @@ def parse_args() -> argparse.Namespace:
         help="Max commentThreads pages to scan per video.",
     )
     parser.add_argument(
+        "--max-empty-pages-per-video",
+        type=int,
+        default=2,
+        help="Stop scanning a video after this many consecutive pages with zero kept comments.",
+    )
+    parser.add_argument(
         "--min-chars",
         type=int,
         default=20,
@@ -491,6 +521,11 @@ def parse_args() -> argparse.Namespace:
         default=0.0,
         help="Sleep between API calls to reduce burst rate.",
     )
+    parser.add_argument(
+        "--resume",
+        action="store_true",
+        help="Append to existing output and continue from already-written comment IDs.",
+    )
     parser.add_argument("--summary-path", type=Path, default=None)
     parser.add_argument("--log-level", default="INFO")
     return parser.parse_args()
@@ -516,13 +551,55 @@ def main() -> None:
     per_lang_stats: dict[str, Counter] = {lang: Counter() for lang in langs}
     per_lang_written = Counter()
     global_stats = Counter()
-
-    writer = JSONLWriter(args.output_path)
     seen_comment_ids: set[str] = set()
+    seen_video_ids_by_lang: dict[str, set[str]] = {lang: set() for lang in langs}
+    existing_rows = 0
+
+    if args.resume and args.output_path.exists():
+        logger.info("Resuming from existing file: %s", args.output_path)
+        for row in read_jsonl(args.output_path):
+            existing_rows += 1
+
+            if not isinstance(row, dict):
+                continue
+
+            comment_id = row.get("comment_id")
+            if comment_id:
+                seen_comment_ids.add(str(comment_id))
+            else:
+                raw_id = row.get("raw_id")
+                if isinstance(raw_id, str):
+                    parts = raw_id.split(":")
+                    if len(parts) >= 3 and parts[0] == "youtube":
+                        seen_comment_ids.add(parts[-1])
+
+            lang = str(row.get("lang") or "").lower()
+            if lang in per_lang_stats:
+                per_lang_written[lang] += 1
+                video_id = row.get("video_id")
+                if video_id:
+                    seen_video_ids_by_lang[lang].add(str(video_id))
+
+        logger.info(
+            "Resume state loaded: existing_rows=%d existing_unique_comment_ids=%d",
+            existing_rows,
+            len(seen_comment_ids),
+        )
+
+    writer = JSONLWriter(args.output_path, append=args.resume, initial_count=existing_rows)
+    quota_exhausted = False
 
     for lang in langs:
         lang_target = lang_targets.get(lang, 0)
         if lang_target <= 0:
+            continue
+        if per_lang_written[lang] >= lang_target:
+            logger.info(
+                "Skipping lang=%s; target already satisfied from existing data (%d/%d)",
+                lang,
+                per_lang_written[lang],
+                lang_target,
+            )
             continue
 
         region = region_map.get(lang, "US")
@@ -534,7 +611,7 @@ def main() -> None:
         )
 
         next_video_page_token: str | None = None
-        seen_video_ids: set[str] = set()
+        seen_video_ids: set[str] = set(seen_video_ids_by_lang.get(lang, set()))
         video_pages_scanned = 0
 
         while per_lang_written[lang] < lang_target and video_pages_scanned < args.max_video_pages_per_lang:
@@ -557,6 +634,11 @@ def main() -> None:
                     retry_backoff_sec=args.retry_backoff_sec,
                     api_key=args.api_key,
                 )
+            except YouTubeQuotaExceededError as exc:
+                logger.error("YouTube quota exhausted while listing videos for lang=%s region=%s: %s", lang, region, exc)
+                per_lang_stats[lang]["video_api_quota_exhausted"] += 1
+                quota_exhausted = True
+                break
             except Exception as exc:
                 logger.warning("videos.list failed for lang=%s region=%s: %s", lang, region, exc)
                 per_lang_stats[lang]["video_api_errors"] += 1
@@ -597,27 +679,37 @@ def main() -> None:
                 per_lang_stats[lang]["videos_seen"] += 1
 
                 keep_limit = lang_target - per_lang_written[lang]
-                comment_stats = crawl_comments_for_video(
-                    video_id=video_id,
-                    lang=lang,
-                    keep_limit=keep_limit,
-                    writer=writer,
-                    api_key=args.api_key,
-                    timeout=args.timeout,
-                    retries=args.retries,
-                    retry_backoff_sec=args.retry_backoff_sec,
-                    max_comments_per_video=args.max_comments_per_video,
-                    max_comment_pages_per_video=args.max_comment_pages_per_video,
-                    min_chars=args.min_chars,
-                    use_langdetect=not args.skip_langdetect,
-                    langdetect_min_chars=args.langdetect_min_chars,
-                    seen_comment_ids=seen_comment_ids,
-                )
+                try:
+                    comment_stats = crawl_comments_for_video(
+                        video_id=video_id,
+                        lang=lang,
+                        keep_limit=keep_limit,
+                        writer=writer,
+                        api_key=args.api_key,
+                        timeout=args.timeout,
+                        retries=args.retries,
+                        retry_backoff_sec=args.retry_backoff_sec,
+                        max_comments_per_video=args.max_comments_per_video,
+                        max_comment_pages_per_video=args.max_comment_pages_per_video,
+                        max_empty_pages_per_video=args.max_empty_pages_per_video,
+                        min_chars=args.min_chars,
+                        use_langdetect=not args.skip_langdetect,
+                        langdetect_min_chars=args.langdetect_min_chars,
+                        seen_comment_ids=seen_comment_ids,
+                    )
+                except YouTubeQuotaExceededError as exc:
+                    logger.error("YouTube quota exhausted while listing comments for video=%s: %s", video_id, exc)
+                    per_lang_stats[lang]["comment_api_quota_exhausted"] += 1
+                    quota_exhausted = True
+                    break
                 per_lang_stats[lang].update(comment_stats)
                 per_lang_written[lang] += int(comment_stats.get("rows_kept", 0))
 
                 if args.sleep_seconds > 0:
                     time.sleep(args.sleep_seconds)
+
+            if quota_exhausted:
+                break
 
             next_video_page_token = video_payload.get("nextPageToken")
             if not next_video_page_token:
@@ -630,6 +722,9 @@ def main() -> None:
                 lang_target,
                 per_lang_written[lang],
             )
+        if quota_exhausted:
+            logger.warning("Stopping crawl early due to exhausted YouTube API quota.")
+            break
 
     writer.close()
 
@@ -640,10 +735,13 @@ def main() -> None:
     summary = {
         "output_path": str(args.output_path),
         "rows_written": writer.count,
+        "rows_existing_before_run": existing_rows,
+        "rows_new_in_run": writer.count - existing_rows,
         "target_max_docs": args.max_docs,
         "languages": langs,
         "targets_by_lang": lang_targets,
         "rows_by_lang": dict(per_lang_written),
+        "quota_exhausted": quota_exhausted,
         "used_langdetect": bool((not args.skip_langdetect) and _HAS_LANGDETECT),
         "stats_total": dict(global_stats),
         "stats_by_lang": {lang: dict(stats) for lang, stats in per_lang_stats.items()},
