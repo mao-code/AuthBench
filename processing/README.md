@@ -2,15 +2,26 @@
 
 This package turns the raw datasets listed in `DATASET.md` into the unified benchmark described in `PROCESSING.md`.
 
+Recommended entrypoint:
+
+```
+python -m processing.construct_benchmark ...
+```
+
+It runs build + postprocess + dedup + monitoring in one command.
+
 ## CLI
 
 Run the module from the repo parent, or set `PYTHONPATH` to the repo parent so
 `AuthBench.*` imports resolve.
 
 ```
-python -m AuthBench.processing.build_benchmark \
-  --manifest AuthBench/processing/datasets_manifest.json \
-  --output-dir /path/to/output \
+python -m processing.construct_benchmark \
+  --manifest processing/datasets_manifest.json \
+  --stage1-output-dir processing/outputs/stage1_example \
+  --output-dir processing/outputs/stage2_example \
+  --report-path processing/outputs/monitoring/pipeline_dynamics_example.json \
+  --overwrite-report \
   --total-docs 100000 \
   --allow-other-languages \
   --max-chunk-tokens 500 \
@@ -18,24 +29,33 @@ python -m AuthBench.processing.build_benchmark \
   --min-chunk-tokens 50 \
   --chunk-probability 0.8 \
   --truncate-to-tokens 2000 \
-  --sanity-check --sanity-limit 500  # optional quick run
+  --post-target-total 100000 \
+  --sanity-check --sanity-limit 500
 ```
 
 Key flags:
 - `--manifest`: JSON manifest describing where each raw dataset lives and which fields contain text/author/lang/genre.
-- `--sanity-check` + `--sanity-limit`: cap records per dataset to validate the end-to-end flow on a small sample.
-- `--total-docs`: global target size (defaults to 100k); language/genre/length buckets follow `PROCESSING.md`.
+- `--stage1-output-dir`: stage-1 build outputs.
+- `--output-dir`: final stage-2 outputs.
+- `--report-path`: unified monitoring report path.
+- `--sanity-check` + `--sanity-limit`: cap records per dataset for quick validation.
+- `--total-docs`: stage-1 global target size (defaults to 100k).
+- `--post-target-total`: stage-2 final target after filtering/dedup.
 - `--train-ratio/--dev-ratio/--test-ratio`: split ratios (default 0.8/0.1/0.1).
-- `--allow-other-languages`: optionally fill unused budget with languages outside the top-10 table.
-- `--max-chunk-tokens` / `--target-chunk-tokens` / `--min-chunk-tokens`: control chunking for long docs; chunks are built on paragraph/sentence boundaries and capped at `max-chunk-tokens`.
-- `--chunk-probability`: for docs exceeding `max-chunk-tokens`, probability of chunking; set <1 to retain some very long docs intact while still chunking most.
-- `--truncate-to-tokens`: after chunking, optionally cap each document to this size using punctuation-aware truncation (avoids mid-sentence cuts).
+- `--allow-other-languages`: fill leftover budget with non-target languages.
+- `--max-chunk-tokens` / `--target-chunk-tokens` / `--min-chunk-tokens`: chunking controls.
+- `--chunk-probability`: probability to chunk over-limit documents.
+- `--truncate-to-tokens`: punctuation-aware post-chunk truncation cap.
+- `--dedup-*`: controls exact/near-text and author-similarity dedup behavior.
 
 Outputs per split (`train|dev|test`):
 - `candidates.jsonl`: full documents with `candidate_id`, `author_id`, `lang`, `genre`, `content`, `source`, `token_length`.
 - `queries.jsonl`: one query per eligible author in the split (no `author_id` field).
 - `ground_truth.jsonl`: `query_id` → positive candidate ids + `author_id`.
-- Logs: `dirty_docs.log`, `sampling_log.json`, `processing_summary.json`.
+- Logs and summaries:
+  - stage1: `processing_summary.json`, `sampling_shortfall.json`
+  - stage2: `postprocessing_summary.json`, `postprocess_dirty.log` (if drops exist)
+  - pipeline report: `pipeline_dynamics*.json`
 
 ## Dataset manifest
 
@@ -53,5 +73,7 @@ See `datasets_manifest.example.json` for a template. Each entry needs:
 - Splits long docs (>500 tokens) into 100–500 token chunks, preserving author/source/genre.
 - Dirty data filters (unique token ratio, symbol ratio, dominant token ratio, zero-length) with logging to `dirty_docs.log`.
 - Enforces 3–5 docs per author (Section 9) with a fallback down to 2 when data are scarce.
+- Post-filters noisy text (spacing/script/language heuristics), then performs exact/near-text and near-author dedup.
 - Samples to language, genre, and length-bucket targets (Sections 5, 8, 12) up to the global doc budget.
 - Deterministic train/dev/test split per language (Section 4) and IR files for queries/candidates/ground truth (Section 15).
+- Writes one unified monitoring report so stage-by-stage stats do not require a separate monitor run.

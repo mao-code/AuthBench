@@ -8,9 +8,11 @@ import re
 import time
 from collections import Counter
 from pathlib import Path
+from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
+from urllib.request import Request, urlopen
 
-from .common import JSONLWriter, http_get_text, normalize_whitespace, write_json
+from .common import DEFAULT_USER_AGENT, JSONLWriter, normalize_whitespace, write_json
 
 logger = logging.getLogger(__name__)
 
@@ -41,6 +43,13 @@ EXPECTED_SCRIPTS = {
     "hi": {"devanagari"},
 }
 NON_LATIN_LANGS = {"zh", "ja", "ko", "hi", "ar", "ru"}
+RETRYABLE_403_REASONS = {
+    "backendError",
+    "internalError",
+    "quotaExceeded",
+    "rateLimitExceeded",
+    "userRateLimitExceeded",
+}
 
 try:
     from langdetect import LangDetectException, detect
@@ -162,14 +171,74 @@ def youtube_api_get(
     params: dict[str, object],
     timeout: int,
     retries: int,
+    retry_backoff_sec: float,
     api_key: str,
 ) -> dict:
     query = urlencode({**params, "key": api_key}, doseq=True)
     url = f"{API_BASE}/{endpoint}?{query}"
-    payload = json.loads(http_get_text(url, timeout=timeout, retries=retries))
-    if not isinstance(payload, dict):
-        raise RuntimeError(f"Unexpected YouTube API payload type for {url}")
-    return payload
+    req = Request(url, headers={"User-Agent": DEFAULT_USER_AGENT, "Accept-Encoding": "identity"})
+    last_exc: Exception | None = None
+
+    for attempt in range(1, retries + 1):
+        try:
+            with urlopen(req, timeout=timeout) as resp:
+                payload = json.loads(resp.read().decode("utf-8"))
+            if not isinstance(payload, dict):
+                raise RuntimeError(f"Unexpected YouTube API payload type for {url}")
+            return payload
+        except HTTPError as exc:
+            last_exc = exc
+            body = exc.read().decode("utf-8", errors="replace")
+            reason = ""
+            message = ""
+            try:
+                error_payload = json.loads(body)
+                if isinstance(error_payload, dict):
+                    error_obj = error_payload.get("error")
+                    if isinstance(error_obj, dict):
+                        message = str(error_obj.get("message") or "")
+                        errors = error_obj.get("errors")
+                        if isinstance(errors, list) and errors:
+                            first = errors[0]
+                            if isinstance(first, dict):
+                                reason = str(first.get("reason") or "")
+            except json.JSONDecodeError:
+                message = body.strip()
+
+            is_retryable_403 = exc.code == 403 and (not reason or reason in RETRYABLE_403_REASONS)
+            if attempt < retries and (is_retryable_403 or exc.code in {408, 429, 500, 502, 503, 504}):
+                sleep_for = retry_backoff_sec * attempt
+                logger.warning(
+                    "YouTube API GET failed (%s reason=%s message=%s), retrying in %.1fs [attempt %d/%d]",
+                    exc.code,
+                    reason or "unknown",
+                    message or exc.reason,
+                    sleep_for,
+                    attempt,
+                    retries,
+                )
+                time.sleep(sleep_for)
+                continue
+
+            detail = message or body.strip() or str(exc)
+            if reason:
+                detail = f"{detail} (reason={reason})"
+            raise RuntimeError(f"Failed to fetch {url}: HTTP {exc.code} {detail}") from exc
+        except (URLError, TimeoutError, json.JSONDecodeError) as exc:
+            last_exc = exc
+            if attempt == retries:
+                break
+            sleep_for = retry_backoff_sec * attempt
+            logger.warning(
+                "YouTube API GET failed (%s), retrying in %.1fs [attempt %d/%d]",
+                exc,
+                sleep_for,
+                attempt,
+                retries,
+            )
+            time.sleep(sleep_for)
+
+    raise RuntimeError(f"Failed to fetch {url}: {last_exc}")
 
 
 def language_targets(langs: list[str], total_docs: int) -> dict[str, int]:
@@ -205,6 +274,7 @@ def crawl_comments_for_video(
     api_key: str,
     timeout: int,
     retries: int,
+    retry_backoff_sec: float,
     max_comments_per_video: int,
     max_comment_pages_per_video: int,
     min_chars: int,
@@ -241,6 +311,7 @@ def crawl_comments_for_video(
                 params=params,
                 timeout=timeout,
                 retries=retries,
+                retry_backoff_sec=retry_backoff_sec,
                 api_key=api_key,
             )
         except Exception as exc:
@@ -409,6 +480,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--timeout", type=int, default=60)
     parser.add_argument("--retries", type=int, default=3)
     parser.add_argument(
+        "--retry-backoff-sec",
+        type=float,
+        default=1.5,
+        help="Linear backoff seconds multiplier between retries.",
+    )
+    parser.add_argument(
         "--sleep-seconds",
         type=float,
         default=0.0,
@@ -477,6 +554,7 @@ def main() -> None:
                     params=params,
                     timeout=args.timeout,
                     retries=args.retries,
+                    retry_backoff_sec=args.retry_backoff_sec,
                     api_key=args.api_key,
                 )
             except Exception as exc:
@@ -527,6 +605,7 @@ def main() -> None:
                     api_key=args.api_key,
                     timeout=args.timeout,
                     retries=args.retries,
+                    retry_backoff_sec=args.retry_backoff_sec,
                     max_comments_per_video=args.max_comments_per_video,
                     max_comment_pages_per_video=args.max_comment_pages_per_video,
                     min_chars=args.min_chars,

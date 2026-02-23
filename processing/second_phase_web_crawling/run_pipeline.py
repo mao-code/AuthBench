@@ -17,16 +17,19 @@ def _run(cmd: list[str]) -> None:
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
-            "End-to-end runner for second-phase web crawling + the existing AuthBench "
-            "monitor/build/postprocess pipeline."
+            "End-to-end runner for second-phase web crawling + unified AuthBench "
+            "construction (build + postprocess + dedup + monitoring report)."
         )
     )
     parser.add_argument(
         "--stages",
         nargs="+",
-        default=["crawl", "monitor", "build", "postprocess"],
-        choices=["crawl", "monitor", "build", "postprocess"],
-        help="Which stages to execute (default: all).",
+        default=["crawl", "construct"],
+        choices=["crawl", "construct", "monitor", "build", "postprocess"],
+        help=(
+            "Which stages to execute (default: crawl + construct). "
+            "Legacy stage names monitor/build/postprocess map to construct."
+        ),
     )
 
     parser.add_argument(
@@ -119,6 +122,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--ytcomments-max-comments-per-video", type=int, default=200)
     parser.add_argument("--ytcomments-max-comment-pages-per-video", type=int, default=8)
     parser.add_argument("--ytcomments-min-chars", type=int, default=20)
+    parser.add_argument("--ytcomments-timeout", type=int, default=60)
+    parser.add_argument("--ytcomments-retries", type=int, default=3)
+    parser.add_argument("--ytcomments-retry-backoff-sec", type=float, default=1.5)
+    parser.add_argument("--ytcomments-sleep-seconds", type=float, default=0.0)
     parser.add_argument("--ytcomments-skip-langdetect", action="store_true")
 
     # Core processing options
@@ -154,6 +161,9 @@ def parse_args() -> argparse.Namespace:
 
     parser.add_argument("--post-target-total", type=int, default=None)
     parser.add_argument("--post-skip-langdetect", action="store_true")
+    parser.add_argument("--disable-dedup", action="store_true")
+    parser.add_argument("--dedup-near-similarity-threshold", type=float, default=0.92)
+    parser.add_argument("--dedup-author-similarity-threshold", type=float, default=0.94)
 
     parser.add_argument("--log-level", default="INFO")
     return parser.parse_args()
@@ -250,6 +260,14 @@ def run_crawl_stage(args: argparse.Namespace) -> None:
             str(args.ytcomments_max_comment_pages_per_video),
             "--min-chars",
             str(args.ytcomments_min_chars),
+            "--timeout",
+            str(args.ytcomments_timeout),
+            "--retries",
+            str(args.ytcomments_retries),
+            "--retry-backoff-sec",
+            str(args.ytcomments_retry_backoff_sec),
+            "--sleep-seconds",
+            str(args.ytcomments_sleep_seconds),
             "--log-level",
             args.log_level,
         ]
@@ -278,16 +296,20 @@ def run_crawl_stage(args: argparse.Namespace) -> None:
     )
 
 
-def run_monitor_stage(args: argparse.Namespace) -> None:
+def run_construct_stage(args: argparse.Namespace) -> None:
     py = sys.executable
     cmd = [
         py,
         "-m",
-        "processing.monitor_pipeline",
+        "processing.construct_benchmark",
         "--manifest",
         str(args.manifest_path),
         "--report-path",
         str(args.monitor_report_path),
+        "--stage1-output-dir",
+        str(args.build_output_dir),
+        "--output-dir",
+        str(args.postprocess_output_dir),
         "--total-docs",
         str(args.total_docs),
         "--seed",
@@ -310,7 +332,7 @@ def run_monitor_stage(args: argparse.Namespace) -> None:
     if args.allow_other_languages:
         cmd.append("--allow-other-languages")
     if args.monitor_overwrite:
-        cmd.append("--overwrite")
+        cmd.append("--overwrite-report")
     if args.max_documents_per_dataset is not None:
         cmd.extend(["--max-documents-per-dataset", str(args.max_documents_per_dataset)])
     if args.dataset_max_docs:
@@ -321,74 +343,16 @@ def run_monitor_stage(args: argparse.Namespace) -> None:
         cmd.extend(["--post-target-total", str(args.post_target_total)])
     if args.post_skip_langdetect:
         cmd.append("--post-skip-langdetect")
-    _run(cmd)
-
-
-def run_build_stage(args: argparse.Namespace) -> None:
-    py = sys.executable
-    cmd = [
-        py,
-        "-m",
-        "processing.build_benchmark",
-        "--manifest",
-        str(args.manifest_path),
-        "--output-dir",
-        str(args.build_output_dir),
-        "--total-docs",
-        str(args.total_docs),
-        "--seed",
-        str(args.seed),
-        "--train-ratio",
-        str(args.train_ratio),
-        "--dev-ratio",
-        str(args.dev_ratio),
-        "--test-ratio",
-        str(args.test_ratio),
-        "--shuffle-buffer-size",
-        str(args.shuffle_buffer_size),
-        "--chunk-probability",
-        str(args.chunk_probability),
-        "--truncate-to-tokens",
-        str(args.truncate_to_tokens),
-        "--log-level",
-        args.log_level,
-    ]
-    if args.allow_other_languages:
-        cmd.append("--allow-other-languages")
-    if args.max_documents_per_dataset is not None:
-        cmd.extend(["--max-documents-per-dataset", str(args.max_documents_per_dataset)])
-    if args.dataset_max_docs:
-        cmd.extend(["--dataset-max-docs", *args.dataset_max_docs])
-    if args.no_shuffle_datasets:
-        cmd.extend(["--no-shuffle-datasets", *args.no_shuffle_datasets])
-    _run(cmd)
-
-
-def run_postprocess_stage(args: argparse.Namespace) -> None:
-    py = sys.executable
-    cmd = [
-        py,
-        "-m",
-        "processing.postprocess",
-        "--input-dir",
-        str(args.build_output_dir),
-        "--output-dir",
-        str(args.postprocess_output_dir),
-        "--seed",
-        str(args.seed),
-        "--train-ratio",
-        str(args.train_ratio),
-        "--dev-ratio",
-        str(args.dev_ratio),
-        "--test-ratio",
-        str(args.test_ratio),
-        "--log-level",
-        args.log_level,
-    ]
-    if args.post_target_total is not None:
-        cmd.extend(["--target-total", str(args.post_target_total)])
-    if args.post_skip_langdetect:
-        cmd.append("--skip-langdetect")
+    if args.disable_dedup:
+        cmd.append("--disable-dedup")
+    if args.dedup_near_similarity_threshold is not None:
+        cmd.extend(
+            ["--dedup-near-similarity-threshold", str(args.dedup_near_similarity_threshold)]
+        )
+    if args.dedup_author_similarity_threshold is not None:
+        cmd.extend(
+            ["--dedup-author-similarity-threshold", str(args.dedup_author_similarity_threshold)]
+        )
     _run(cmd)
 
 
@@ -407,12 +371,15 @@ def main() -> None:
 
     if "crawl" in stages:
         run_crawl_stage(args)
-    if "monitor" in stages:
-        run_monitor_stage(args)
-    if "build" in stages:
-        run_build_stage(args)
-    if "postprocess" in stages:
-        run_postprocess_stage(args)
+
+    construct_aliases = {"construct", "monitor", "build", "postprocess"}
+    if stages & construct_aliases:
+        if "construct" not in stages:
+            logger.info(
+                "Legacy stage alias detected (%s); running unified construct stage.",
+                ", ".join(sorted(stages & {"monitor", "build", "postprocess"})),
+            )
+        run_construct_stage(args)
 
 
 if __name__ == "__main__":

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Run second-phase web crawling + monitor/build/postprocess at 60K target
+# Run second-phase web crawling + unified construct pipeline at 60K target
 # using 4 web datasets:
 # - StackExchange
 # - Project Gutenberg
@@ -28,6 +28,7 @@ PYTHON_BIN="${PYTHON_BIN:-python3}"
 TARGET_TOTAL="${TARGET_TOTAL:-60000}"
 POST_TARGET_TOTAL="${POST_TARGET_TOTAL:-60000}"
 SEED="${SEED:-42}"
+PIPELINE_STAGES="${PIPELINE_STAGES:-crawl construct}"
 
 TARGET_LANGUAGES="${TARGET_LANGUAGES:-en,zh,hi,es,fr,ar,ru,de,ja,ko}"
 
@@ -61,12 +62,17 @@ YTCOMMENTS_MAX_COMMENTS_PER_VIDEO="${YTCOMMENTS_MAX_COMMENTS_PER_VIDEO:-200}"
 YTCOMMENTS_MAX_COMMENT_PAGES_PER_VIDEO="${YTCOMMENTS_MAX_COMMENT_PAGES_PER_VIDEO:-8}"
 YTCOMMENTS_MIN_CHARS="${YTCOMMENTS_MIN_CHARS:-20}"
 YTCOMMENTS_SKIP_LANGDETECT="${YTCOMMENTS_SKIP_LANGDETECT:-0}"
+YTCOMMENTS_TIMEOUT="${YTCOMMENTS_TIMEOUT:-60}"
+YTCOMMENTS_RETRIES="${YTCOMMENTS_RETRIES:-6}"
+YTCOMMENTS_RETRY_BACKOFF_SEC="${YTCOMMENTS_RETRY_BACKOFF_SEC:-2.0}"
+YTCOMMENTS_SLEEP_SECONDS="${YTCOMMENTS_SLEEP_SECONDS:-0.15}"
 
 # Restart toggles
 SKIP_STACKEXCHANGE="${SKIP_STACKEXCHANGE:-0}"
 SKIP_GUTENBERG="${SKIP_GUTENBERG:-0}"
 SKIP_WIKISOURCE="${SKIP_WIKISOURCE:-0}"
 SKIP_YTCOMMENTS="${SKIP_YTCOMMENTS:-0}"
+YT_ONLY="${YT_ONLY:-0}"
 
 # Ramp controls
 AUTO_RAMP="${AUTO_RAMP:-1}"
@@ -84,6 +90,22 @@ RUN_TAG="${RUN_TAG:-all4_t60k}"
 MONITOR_REPORT_PATH="${MONITOR_REPORT_PATH:-processing/second_phase_web_crawling/outputs/monitoring/pipeline_dynamics_${RUN_TAG}.json}"
 BUILD_OUTPUT_DIR="${BUILD_OUTPUT_DIR:-processing/second_phase_web_crawling/outputs/stage1_${RUN_TAG}}"
 POSTPROCESS_OUTPUT_DIR="${POSTPROCESS_OUTPUT_DIR:-processing/second_phase_web_crawling/outputs/stage2_${RUN_TAG}}"
+
+if [[ "$YT_ONLY" == "1" ]]; then
+  SKIP_STACKEXCHANGE=1
+  SKIP_GUTENBERG=1
+  SKIP_WIKISOURCE=1
+  SKIP_YTCOMMENTS=0
+fi
+
+read -r -a STAGE_ARGS <<<"$PIPELINE_STAGES"
+RUN_CONSTRUCT=0
+for stage in "${STAGE_ARGS[@]}"; do
+  if [[ "$stage" == "construct" || "$stage" == "build" || "$stage" == "postprocess" || "$stage" == "monitor" ]]; then
+    RUN_CONSTRUCT=1
+    break
+  fi
+done
 
 if [[ "$SKIP_YTCOMMENTS" != "1" && -z "${YOUTUBE_API_KEY:-}" ]]; then
   echo "Error: YOUTUBE_API_KEY is required for YTComments. Add it to .env or export it."
@@ -119,8 +141,9 @@ YT_CAP="$YTCOMMENTS_MAX_DOCS"
 ROUND=1
 FINAL_AFTER_SAMPLING=0
 
-echo "[1/3] Running crawl + monitor + build + postprocess (target=${TARGET_TOTAL})"
+echo "[1/3] Running crawl + construct (target=${TARGET_TOTAL})"
 echo "skip flags: stackexchange=${SKIP_STACKEXCHANGE} gutenberg=${SKIP_GUTENBERG} wikisource=${SKIP_WIKISOURCE} ytcomments=${SKIP_YTCOMMENTS}"
+echo "stages: ${PIPELINE_STAGES}"
 
 while true; do
   echo ""
@@ -136,7 +159,7 @@ while true; do
 
   CMD=(
     "$PYTHON_BIN" -m processing.second_phase_web_crawling.run_pipeline
-    --stages crawl monitor build postprocess
+    --stages "${STAGE_ARGS[@]}"
     --manifest-path "$MANIFEST_PATH"
     --stackexchange-download-mode "$STACKEXCHANGE_MODE"
     --stackexchange-sites "$STACKEXCHANGE_SITES"
@@ -154,6 +177,10 @@ while true; do
     --ytcomments-max-comments-per-video "$YTCOMMENTS_MAX_COMMENTS_PER_VIDEO"
     --ytcomments-max-comment-pages-per-video "$YTCOMMENTS_MAX_COMMENT_PAGES_PER_VIDEO"
     --ytcomments-min-chars "$YTCOMMENTS_MIN_CHARS"
+    --ytcomments-timeout "$YTCOMMENTS_TIMEOUT"
+    --ytcomments-retries "$YTCOMMENTS_RETRIES"
+    --ytcomments-retry-backoff-sec "$YTCOMMENTS_RETRY_BACKOFF_SEC"
+    --ytcomments-sleep-seconds "$YTCOMMENTS_SLEEP_SECONDS"
     --monitor-report-path "$MONITOR_REPORT_PATH"
     --monitor-overwrite
     --build-output-dir "$BUILD_OUTPUT_DIR"
@@ -189,6 +216,11 @@ while true; do
   fi
 
   "${CMD[@]}"
+
+  if [[ "$RUN_CONSTRUCT" != "1" ]]; then
+    echo "Crawl-only run finished (no construct stage requested)."
+    break
+  fi
 
   if [[ ! -f "$BUILD_OUTPUT_DIR/processing_summary.json" ]]; then
     echo "Error: missing $BUILD_OUTPUT_DIR/processing_summary.json after round ${ROUND}"
@@ -248,7 +280,7 @@ fi
 if [[ -f "$POSTPROCESS_OUTPUT_DIR/postprocessing_summary.json" ]]; then
   echo ""
   echo "Stage2 postprocessing summary:"
-  jq '{before_filter: .before_filter.total, after_filter: .after_filter.total, after_sampling: .after_sampling.total, split_candidates: {train: .splits.train.candidates, dev: .splits.dev.candidates, test: .splits.test.candidates}}' "$POSTPROCESS_OUTPUT_DIR/postprocessing_summary.json"
+  jq '{before_filter: .before_filter.total, after_filter: .after_filter.total, after_dedup: .after_dedup.total, after_sampling: .after_sampling.total, split_candidates: {train: .splits.train.candidates, dev: .splits.dev.candidates, test: .splits.test.candidates}}' "$POSTPROCESS_OUTPUT_DIR/postprocessing_summary.json"
 fi
 
 echo "[3/3] Done"

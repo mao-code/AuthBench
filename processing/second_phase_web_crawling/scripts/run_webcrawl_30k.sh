@@ -1,11 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Run second-phase web crawling + monitor/build/postprocess at 30K target.
+# Run second-phase web crawling + unified construct pipeline at 30K target.
 # This keeps the same core logic as your original AuthBench pipeline:
-# - processing.monitor_pipeline
-# - processing.build_benchmark
-# - processing.postprocess
+# - processing.construct_benchmark (build + postprocess + dedup + report)
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 cd "$ROOT_DIR"
@@ -96,7 +94,7 @@ WS_CAP_TOTAL="$WIKISOURCE_MAX_TOTAL_DOCS"
 ROUND=1
 FINAL_AFTER_SAMPLING=0
 
-echo "[1/3] Running crawl + monitor + build + postprocess (target=${TARGET_TOTAL})"
+echo "[1/3] Running crawl + construct (target=${TARGET_TOTAL})"
 echo "skip flags: stackexchange=${SKIP_STACKEXCHANGE} gutenberg=${SKIP_GUTENBERG} wikisource=${SKIP_WIKISOURCE} ytcomments=${SKIP_YTCOMMENTS}"
 
 while true; do
@@ -106,7 +104,7 @@ while true; do
 
   CMD=(
     "$PYTHON_BIN" -m processing.second_phase_web_crawling.run_pipeline
-    --stages crawl monitor build postprocess
+    --stages crawl construct
     --manifest-path "$MANIFEST_PATH"
     --stackexchange-download-mode "$STACKEXCHANGE_MODE"
     --stackexchange-sites "$STACKEXCHANGE_SITES"
@@ -205,7 +203,7 @@ fi
 if [[ -f "$POSTPROCESS_OUTPUT_DIR/postprocessing_summary.json" ]]; then
   echo ""
   echo "Stage2 postprocessing summary:"
-  jq '{before_filter: .before_filter.total, after_filter: .after_filter.total, after_sampling: .after_sampling.total, split_candidates: {train: .splits.train.candidates, dev: .splits.dev.candidates, test: .splits.test.candidates}}' "$POSTPROCESS_OUTPUT_DIR/postprocessing_summary.json"
+  jq '{before_filter: .before_filter.total, after_filter: .after_filter.total, after_dedup: .after_dedup.total, after_sampling: .after_sampling.total, split_candidates: {train: .splits.train.candidates, dev: .splits.dev.candidates, test: .splits.test.candidates}}' "$POSTPROCESS_OUTPUT_DIR/postprocessing_summary.json"
 fi
 
 echo "[3/3] Done"

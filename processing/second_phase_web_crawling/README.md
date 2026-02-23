@@ -1,9 +1,7 @@
 # Second-Phase Web Crawling
 
 This folder adds new web-sourced corpora and keeps the downstream benchmark logic exactly aligned with `processing/`:
-- filtering/chunking/author caps/sampling/splits: `processing.build_benchmark`
-- monitoring dynamics: `processing.monitor_pipeline`
-- final post-cleaning/rebalancing outputs: `processing.postprocess`
+- unified constructor (build + postprocess + dedup + monitoring): `processing.construct_benchmark`
 
 ## Sources Included
 
@@ -40,7 +38,7 @@ This folder adds new web-sourced corpora and keeps the downstream benchmark logi
 - `crawl_wikisource.py`: parses Wikisource XML dumps into plain-text rows with author heuristics.
 - `crawl_ytcomments.py`: collects multilingual YouTube top-level comments into JSONL rows.
 - `build_manifest.py`: builds a `processing`-compatible manifest for crawled JSONL files.
-- `run_pipeline.py`: end-to-end runner (crawl -> monitor -> build -> postprocess).
+- `run_pipeline.py`: end-to-end runner (crawl -> construct).
 
 ## Quick Start
 
@@ -64,11 +62,11 @@ Notes:
 - `--stackexchange-download-mode archive` exists for legacy/mirror workflows.
 - `crawl_ytcomments.py` uses YouTube Data API v3 key auth (`YOUTUBE_API_KEY` environment variable).
 
-### 2) Run monitor/build/postprocess with the same pipeline logic
+### 2) Run unified construct with the same pipeline logic
 
 ```bash
 python -m processing.second_phase_web_crawling.run_pipeline \
-  --stages monitor build postprocess \
+  --stages construct \
   --total-docs 100000 \
   --allow-other-languages \
   --max-documents-per-dataset 10000000 \
