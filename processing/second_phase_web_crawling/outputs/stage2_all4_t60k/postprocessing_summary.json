@@ -1,0 +1,498 @@
+{
+  "input_dir": "processing/second_phase_web_crawling/outputs/stage1_all4_t60k",
+  "output_dir": "processing/second_phase_web_crawling/outputs/stage2_all4_t60k",
+  "before_filter": {
+    "total": 18639,
+    "by_lang": {
+      "ar": 1981,
+      "de": 1595,
+      "en": 6742,
+      "es": 1664,
+      "fr": 1717,
+      "hi": 21,
+      "ja": 688,
+      "ko": 786,
+      "ru": 1087,
+      "zh": 2358
+    },
+    "by_genre": {
+      "literature": 9901,
+      "literature/drama": 141,
+      "literature/speech_essay": 768,
+      "poetry": 370,
+      "qna/answer": 79,
+      "qna/question": 2947,
+      "social_media/youtube_comment": 4433
+    },
+    "by_length_bucket": {
+      "extra_long": 919,
+      "long": 12053,
+      "medium": 5300,
+      "short": 367
+    }
+  },
+  "after_filter": {
+    "total": 18455,
+    "by_lang": {
+      "ar": 1978,
+      "de": 1560,
+      "en": 6706,
+      "es": 1664,
+      "fr": 1701,
+      "hi": 21,
+      "ja": 653,
+      "ko": 778,
+      "ru": 1056,
+      "zh": 2338
+    },
+    "by_genre": {
+      "literature": 9790,
+      "literature/drama": 141,
+      "literature/speech_essay": 763,
+      "poetry": 368,
+      "qna/answer": 78,
+      "qna/question": 2911,
+      "social_media/youtube_comment": 4404
+    },
+    "by_length_bucket": {
+      "extra_long": 888,
+      "long": 11963,
+      "medium": 5240,
+      "short": 364
+    }
+  },
+  "after_dedup": {
+    "total": 18343,
+    "by_lang": {
+      "ar": 1937,
+      "de": 1544,
+      "en": 6701,
+      "es": 1645,
+      "fr": 1683,
+      "hi": 19,
+      "ja": 650,
+      "ko": 776,
+      "ru": 1052,
+      "zh": 2336
+    },
+    "by_genre": {
+      "literature": 9759,
+      "literature/drama": 141,
+      "literature/speech_essay": 763,
+      "poetry": 368,
+      "qna/answer": 78,
+      "qna/question": 2908,
+      "social_media/youtube_comment": 4326
+    },
+    "by_length_bucket": {
+      "extra_long": 888,
+      "long": 11926,
+      "medium": 5168,
+      "short": 361
+    }
+  },
+  "after_sampling": {
+    "total": 18343,
+    "by_lang": {
+      "ar": 1937,
+      "de": 1544,
+      "en": 6701,
+      "es": 1645,
+      "fr": 1683,
+      "hi": 19,
+      "ja": 650,
+      "ko": 776,
+      "ru": 1052,
+      "zh": 2336
+    },
+    "by_genre": {
+      "literature": 9759,
+      "literature/drama": 141,
+      "literature/speech_essay": 763,
+      "poetry": 368,
+      "qna/answer": 78,
+      "qna/question": 2908,
+      "social_media/youtube_comment": 4326
+    },
+    "by_length_bucket": {
+      "extra_long": 888,
+      "long": 11926,
+      "medium": 5168,
+      "short": 361
+    }
+  },
+  "drop_reasons": {
+    "untranslatable": 177,
+    "excessive_spaced_letters": 7
+  },
+  "drop_reasons_by_lang": {
+    "ar:untranslatable": 3,
+    "de:untranslatable": 35,
+    "en:untranslatable": 36,
+    "fr:untranslatable": 16,
+    "ja:untranslatable": 34,
+    "ja:excessive_spaced_letters": 1,
+    "ko:untranslatable": 8,
+    "ru:untranslatable": 31,
+    "zh:untranslatable": 14,
+    "zh:excessive_spaced_letters": 6
+  },
+  "dirty_log_path": "processing/second_phase_web_crawling/outputs/stage2_all4_t60k/postprocess_dirty.log",
+  "dirty_log_count": 184,
+  "language_targets": {
+    "available_total": 18343,
+    "requested_total": 18343,
+    "final_total": 18343,
+    "per_language": {
+      "ja": {
+        "target": 650,
+        "available": 650,
+        "percent_weight": 0.05000000000000001
+      },
+      "zh": {
+        "target": 2336,
+        "available": 2336,
+        "percent_weight": 0.10000000000000002
+      },
+      "ru": {
+        "target": 1052,
+        "available": 1052,
+        "percent_weight": 0.08000000000000002
+      },
+      "es": {
+        "target": 1645,
+        "available": 1645,
+        "percent_weight": 0.10000000000000002
+      },
+      "de": {
+        "target": 1544,
+        "available": 1544,
+        "percent_weight": 0.08000000000000002
+      },
+      "ko": {
+        "target": 776,
+        "available": 776,
+        "percent_weight": 0.05000000000000001
+      },
+      "ar": {
+        "target": 1937,
+        "available": 1937,
+        "percent_weight": 0.08000000000000002
+      },
+      "en": {
+        "target": 6701,
+        "available": 6701,
+        "percent_weight": 0.35000000000000003
+      },
+      "fr": {
+        "target": 1683,
+        "available": 1683,
+        "percent_weight": 0.08000000000000002
+      },
+      "hi": {
+        "target": 19,
+        "available": 19,
+        "percent_weight": 0.030000000000000002
+      }
+    }
+  },
+  "sampling_deficits": [
+    {
+      "lang": "en",
+      "genre": "social_media",
+      "needed": 3016,
+      "selected": 619,
+      "bucket_deficits": {
+        "long": 558,
+        "medium": 1091,
+        "short": 297,
+        "extra_long": 451
+      }
+    },
+    {
+      "lang": "en",
+      "genre": "blog",
+      "needed": 1005,
+      "selected": 0,
+      "bucket_deficits": {}
+    },
+    {
+      "lang": "en",
+      "genre": "ecommerce_reviews",
+      "needed": 670,
+      "selected": 0,
+      "bucket_deficits": {}
+    },
+    {
+      "lang": "en",
+      "genre": "research_paper",
+      "needed": 670,
+      "selected": 0,
+      "bucket_deficits": {}
+    },
+    {
+      "lang": "en",
+      "genre": "news",
+      "needed": 1340,
+      "selected": 0,
+      "bucket_deficits": {}
+    },
+    {
+      "lang": "zh",
+      "genre": "social_media/xiaohongshu",
+      "needed": 818,
+      "selected": 0,
+      "bucket_deficits": {}
+    },
+    {
+      "lang": "zh",
+      "genre": "social_media",
+      "needed": 467,
+      "selected": 55,
+      "bucket_deficits": {
+        "medium": 191,
+        "long": 82,
+        "extra_long": 69
+      }
+    },
+    {
+      "lang": "zh",
+      "genre": "media_reviews/douban",
+      "needed": 584,
+      "selected": 0,
+      "bucket_deficits": {}
+    },
+    {
+      "lang": "zh",
+      "genre": "news",
+      "needed": 467,
+      "selected": 0,
+      "bucket_deficits": {}
+    },
+    {
+      "lang": "es",
+      "genre": "social_media",
+      "needed": 740,
+      "selected": 504,
+      "bucket_deficits": {
+        "long": 122,
+        "short": 45,
+        "extra_long": 110
+      }
+    },
+    {
+      "lang": "es",
+      "genre": "news",
+      "needed": 329,
+      "selected": 0,
+      "bucket_deficits": {}
+    },
+    {
+      "lang": "ar",
+      "genre": "social_media",
+      "needed": 872,
+      "selected": 805,
+      "bucket_deficits": {
+        "long": 76,
+        "extra_long": 130
+      }
+    },
+    {
+      "lang": "ar",
+      "genre": "poetry",
+      "needed": 194,
+      "selected": 13,
+      "bucket_deficits": {
+        "long": 27,
+        "medium": 96
+      }
+    },
+    {
+      "lang": "ar",
+      "genre": "news",
+      "needed": 387,
+      "selected": 0,
+      "bucket_deficits": {}
+    },
+    {
+      "lang": "fr",
+      "genre": "social_media",
+      "needed": 925,
+      "selected": 382,
+      "bucket_deficits": {
+        "medium": 173,
+        "short": 71,
+        "long": 160
+      }
+    },
+    {
+      "lang": "fr",
+      "genre": "news",
+      "needed": 337,
+      "selected": 0,
+      "bucket_deficits": {}
+    },
+    {
+      "lang": "ru",
+      "genre": "news",
+      "needed": 210,
+      "selected": 0,
+      "bucket_deficits": {}
+    },
+    {
+      "lang": "de",
+      "genre": "social_media",
+      "needed": 849,
+      "selected": 264,
+      "bucket_deficits": {
+        "medium": 227,
+        "short": 77,
+        "long": 154
+      }
+    },
+    {
+      "lang": "de",
+      "genre": "news",
+      "needed": 309,
+      "selected": 0,
+      "bucket_deficits": {}
+    },
+    {
+      "lang": "ja",
+      "genre": "news",
+      "needed": 130,
+      "selected": 0,
+      "bucket_deficits": {}
+    },
+    {
+      "lang": "ko",
+      "genre": "news",
+      "needed": 155,
+      "selected": 0,
+      "bucket_deficits": {}
+    },
+    {
+      "lang": "hi",
+      "genre": "literature",
+      "needed": 5,
+      "selected": 0,
+      "bucket_deficits": {}
+    },
+    {
+      "lang": "hi",
+      "genre": "news",
+      "needed": 4,
+      "selected": 0,
+      "bucket_deficits": {}
+    }
+  ],
+  "deduplication": {
+    "input_docs": 18455,
+    "after_exact_and_near_doc_dedup": 18343,
+    "after_author_dedup": 18343,
+    "dropped_total": 112,
+    "drop_reasons": {
+      "exact_text_duplicate": 74,
+      "near_text_duplicate": 38
+    },
+    "authors_before": 13720,
+    "authors_after": 13720,
+    "authors_dropped": 0,
+    "near_similarity_threshold": 0.92,
+    "near_hamming_max": 5,
+    "near_candidates_checked": 18221,
+    "near_pairs_matched": 38,
+    "author_similarity_threshold": 0.94,
+    "author_pairs_matched": 0,
+    "config": {
+      "exact_text": true,
+      "near_text": true,
+      "near_lsh_bands": 4,
+      "min_tokens_for_near": 20,
+      "near_same_language_only": true,
+      "author_similarity": true,
+      "author_cross_source_only": true,
+      "author_same_language_only": true,
+      "author_profile_docs": 3,
+      "max_bucket_size": 512
+    }
+  },
+  "splits": {
+    "train": {
+      "candidates": 2971,
+      "queries": 2917,
+      "ground_truth": 2917,
+      "candidates_by_lang": {
+        "ar": 450,
+        "de": 221,
+        "en": 1011,
+        "es": 263,
+        "fr": 342,
+        "hi": 3,
+        "ja": 71,
+        "ko": 58,
+        "ru": 100,
+        "zh": 452
+      },
+      "queries_by_lang": {
+        "ar": 432,
+        "de": 223,
+        "en": 1001,
+        "es": 260,
+        "fr": 332,
+        "hi": 3,
+        "ja": 68,
+        "ko": 56,
+        "ru": 94,
+        "zh": 448
+      }
+    },
+    "dev": {
+      "candidates": 37,
+      "queries": 37,
+      "ground_truth": 37,
+      "candidates_by_lang": {
+        "ar": 3,
+        "de": 2,
+        "en": 11,
+        "es": 8,
+        "fr": 5,
+        "ru": 2,
+        "zh": 6
+      },
+      "queries_by_lang": {
+        "ar": 3,
+        "de": 2,
+        "en": 11,
+        "es": 8,
+        "fr": 5,
+        "ru": 2,
+        "zh": 6
+      }
+    },
+    "test": {
+      "candidates": 21,
+      "queries": 21,
+      "ground_truth": 21,
+      "candidates_by_lang": {
+        "ar": 5,
+        "de": 1,
+        "en": 6,
+        "es": 2,
+        "fr": 4,
+        "ja": 1,
+        "zh": 2
+      },
+      "queries_by_lang": {
+        "ar": 5,
+        "de": 1,
+        "en": 6,
+        "es": 2,
+        "fr": 4,
+        "ja": 1,
+        "zh": 2
+      }
+    }
+  },
+  "runtime_seconds": 67.156
+}

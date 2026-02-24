@@ -1,0 +1,292 @@
+{
+  "inputs": {
+    "clean_documents": 13005821,
+    "dirty_documents": 52790,
+    "dropped_authors": 164196,
+    "errored_documents": 0
+  },
+  "after_author_filter": {
+    "total": 194672,
+    "by_lang": {
+      "en": 52264,
+      "ru": 34465,
+      "es": 33048,
+      "ja": 24572,
+      "fr": 7366,
+      "de": 12534,
+      "zh": 11816,
+      "ko": 13504,
+      "ar": 5041,
+      "hi": 62
+    },
+    "by_genre": {
+      "qna/question": 89150,
+      "qna/answer": 6513,
+      "literature": 78176,
+      "poetry": 3116,
+      "literature/speech_essay": 5075,
+      "literature/drama": 834,
+      "social_media/youtube_comment": 11808
+    },
+    "by_source": {
+      "stackexchange": 95663,
+      "project_gutenberg": 23900,
+      "wikisource": 63301,
+      "ytcomments": 11808
+    }
+  },
+  "after_sampling": {
+    "total": 58262,
+    "by_lang": {
+      "ar": 4800,
+      "de": 4800,
+      "en": 21000,
+      "es": 6000,
+      "fr": 4800,
+      "hi": 62,
+      "ja": 3000,
+      "ko": 3000,
+      "ru": 4800,
+      "zh": 6000
+    },
+    "by_genre": {
+      "literature": 28197,
+      "literature/speech_essay": 2106,
+      "poetry": 1015,
+      "social_media/youtube_comment": 11803,
+      "literature/drama": 352,
+      "qna/question": 14185,
+      "qna/answer": 604
+    },
+    "by_source": {
+      "wikisource": 22033,
+      "ytcomments": 11803,
+      "project_gutenberg": 9637,
+      "stackexchange": 14789
+    }
+  },
+  "splits": {
+    "train": {
+      "total": 46618,
+      "by_lang": {
+        "ar": 3842,
+        "de": 3839,
+        "en": 16801,
+        "es": 4801,
+        "fr": 3840,
+        "hi": 49,
+        "ja": 2399,
+        "ko": 2401,
+        "ru": 3843,
+        "zh": 4803
+      },
+      "by_genre": {
+        "literature": 22562,
+        "literature/speech_essay": 1686,
+        "poetry": 813,
+        "social_media/youtube_comment": 9445,
+        "literature/drama": 281,
+        "qna/question": 11347,
+        "qna/answer": 484
+      },
+      "by_source": {
+        "wikisource": 17640,
+        "ytcomments": 9445,
+        "project_gutenberg": 7702,
+        "stackexchange": 11831
+      }
+    },
+    "dev": {
+      "total": 5844,
+      "by_lang": {
+        "ar": 482,
+        "de": 483,
+        "en": 2102,
+        "es": 602,
+        "fr": 485,
+        "hi": 7,
+        "ja": 302,
+        "ko": 300,
+        "ru": 481,
+        "zh": 600
+      },
+      "by_genre": {
+        "literature": 2822,
+        "literature/speech_essay": 214,
+        "poetry": 105,
+        "social_media/youtube_comment": 1184,
+        "literature/drama": 36,
+        "qna/question": 1422,
+        "qna/answer": 61
+      },
+      "by_source": {
+        "wikisource": 2191,
+        "ytcomments": 1184,
+        "project_gutenberg": 986,
+        "stackexchange": 1483
+      }
+    },
+    "test": {
+      "total": 5800,
+      "by_lang": {
+        "ar": 476,
+        "de": 478,
+        "en": 2097,
+        "es": 597,
+        "fr": 475,
+        "hi": 6,
+        "ja": 299,
+        "ko": 299,
+        "ru": 476,
+        "zh": 597
+      },
+      "by_genre": {
+        "literature": 2813,
+        "literature/speech_essay": 206,
+        "poetry": 97,
+        "social_media/youtube_comment": 1174,
+        "literature/drama": 35,
+        "qna/question": 1416,
+        "qna/answer": 59
+      },
+      "by_source": {
+        "wikisource": 2202,
+        "ytcomments": 1174,
+        "project_gutenberg": 949,
+        "stackexchange": 1475
+      }
+    }
+  },
+  "final_statistics": {
+    "unique_authors": 29984,
+    "avg_docs_per_author": 1.9431029882604056,
+    "genre_by_language": {
+      "ar": {
+        "literature": 2234,
+        "literature/speech_essay": 335,
+        "poetry": 36,
+        "social_media/youtube_comment": 2195
+      },
+      "de": {
+        "literature": 3958,
+        "poetry": 16,
+        "literature/speech_essay": 39,
+        "literature/drama": 21,
+        "social_media/youtube_comment": 766
+      },
+      "en": {
+        "literature": 8628,
+        "poetry": 763,
+        "literature/speech_essay": 1332,
+        "literature/drama": 269,
+        "qna/question": 8330,
+        "social_media/youtube_comment": 1678
+      },
+      "es": {
+        "literature": 2187,
+        "literature/speech_essay": 92,
+        "poetry": 14,
+        "literature/drama": 8,
+        "qna/question": 1939,
+        "qna/answer": 371,
+        "social_media/youtube_comment": 1389
+      },
+      "fr": {
+        "literature": 1533,
+        "literature/drama": 54,
+        "poetry": 103,
+        "literature/speech_essay": 178,
+        "qna/question": 1762,
+        "qna/answer": 134,
+        "social_media/youtube_comment": 1036
+      },
+      "hi": {
+        "social_media/youtube_comment": 62
+      },
+      "ja": {
+        "literature": 954,
+        "qna/answer": 99,
+        "qna/question": 847,
+        "social_media/youtube_comment": 1100
+      },
+      "ko": {
+        "literature": 1435,
+        "literature/speech_essay": 1,
+        "social_media/youtube_comment": 1564
+      },
+      "ru": {
+        "poetry": 31,
+        "literature": 1502,
+        "qna/question": 1307,
+        "literature/speech_essay": 91,
+        "social_media/youtube_comment": 1869
+      },
+      "zh": {
+        "literature": 5766,
+        "literature/speech_essay": 38,
+        "poetry": 52,
+        "social_media/youtube_comment": 144
+      }
+    },
+    "length_bucket_by_language": {
+      "ar": {
+        "long": 2574,
+        "medium": 2079,
+        "extra_long": 145,
+        "short": 2
+      },
+      "de": {
+        "long": 3093,
+        "medium": 1344,
+        "extra_long": 210,
+        "short": 153
+      },
+      "en": {
+        "long": 16779,
+        "medium": 3359,
+        "extra_long": 429,
+        "short": 433
+      },
+      "es": {
+        "long": 3531,
+        "medium": 2150,
+        "extra_long": 118,
+        "short": 201
+      },
+      "fr": {
+        "long": 2777,
+        "medium": 1769,
+        "extra_long": 70,
+        "short": 184
+      },
+      "hi": {
+        "long": 27,
+        "medium": 35
+      },
+      "ja": {
+        "long": 1470,
+        "medium": 1317,
+        "extra_long": 207,
+        "short": 6
+      },
+      "ko": {
+        "long": 1174,
+        "medium": 1697,
+        "extra_long": 128,
+        "short": 1
+      },
+      "ru": {
+        "long": 2136,
+        "medium": 2443,
+        "extra_long": 180,
+        "short": 41
+      },
+      "zh": {
+        "extra_long": 1360,
+        "long": 4252,
+        "medium": 385,
+        "short": 3
+      }
+    }
+  }
+}

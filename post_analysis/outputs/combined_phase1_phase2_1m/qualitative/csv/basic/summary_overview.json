@@ -1,0 +1,15 @@
+{
+  "generated_at_utc": "2026-02-24T15:22:31.706179+00:00",
+  "total_docs": 14688,
+  "total_docs_with_author": 14688,
+  "unique_authors": 7344,
+  "docs_per_author_min": 2,
+  "docs_per_author_avg": 2.0,
+  "docs_per_author_median": 2.0,
+  "docs_per_author_p90": 2.0,
+  "docs_per_author_p95": 2.0,
+  "docs_per_author_max": 2,
+  "language_count": 10,
+  "primary_genre_count": 8,
+  "source_count": 16
+}

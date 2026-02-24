@@ -1,0 +1,218 @@
+[
+  {
+    "lang": "fr",
+    "genre": "social_media",
+    "needed": 2640,
+    "selected": 1036,
+    "bucket_deficits": {
+      "medium": 524,
+      "short": 212,
+      "long": 472
+    }
+  },
+  {
+    "lang": "fr",
+    "genre": "news",
+    "needed": 960,
+    "selected": 0,
+    "bucket_deficits": {}
+  },
+  {
+    "lang": "ar",
+    "genre": "poetry",
+    "needed": 480,
+    "selected": 36,
+    "bucket_deficits": {
+      "long": 63,
+      "medium": 237
+    }
+  },
+  {
+    "lang": "ar",
+    "genre": "news",
+    "needed": 960,
+    "selected": 0,
+    "bucket_deficits": {}
+  },
+  {
+    "lang": "de",
+    "genre": "social_media",
+    "needed": 2640,
+    "selected": 766,
+    "bucket_deficits": {
+      "medium": 748,
+      "short": 249,
+      "long": 481
+    }
+  },
+  {
+    "lang": "de",
+    "genre": "news",
+    "needed": 960,
+    "selected": 0,
+    "bucket_deficits": {}
+  },
+  {
+    "lang": "hi",
+    "type": "language_shortfall",
+    "requested": 1800,
+    "available": 62
+  },
+  {
+    "lang": "hi",
+    "genre": "literature",
+    "needed": 16,
+    "selected": 0,
+    "bucket_deficits": {}
+  },
+  {
+    "lang": "hi",
+    "genre": "news",
+    "needed": 12,
+    "selected": 0,
+    "bucket_deficits": {}
+  },
+  {
+    "lang": "es",
+    "genre": "social_media",
+    "needed": 2700,
+    "selected": 1389,
+    "bucket_deficits": {
+      "medium": 244,
+      "long": 458,
+      "short": 206,
+      "extra_long": 403
+    }
+  },
+  {
+    "lang": "es",
+    "genre": "news",
+    "needed": 1200,
+    "selected": 0,
+    "bucket_deficits": {}
+  },
+  {
+    "lang": "ko",
+    "genre": "social_media",
+    "needed": 1650,
+    "selected": 1564,
+    "bucket_deficits": {
+      "long": 98,
+      "extra_long": 238
+    }
+  },
+  {
+    "lang": "ko",
+    "genre": "news",
+    "needed": 600,
+    "selected": 0,
+    "bucket_deficits": {}
+  },
+  {
+    "lang": "zh",
+    "genre": "social_media/xiaohongshu",
+    "needed": 2100,
+    "selected": 0,
+    "bucket_deficits": {}
+  },
+  {
+    "lang": "zh",
+    "genre": "social_media",
+    "needed": 1200,
+    "selected": 144,
+    "bucket_deficits": {
+      "medium": 483,
+      "extra_long": 178,
+      "long": 215
+    }
+  },
+  {
+    "lang": "zh",
+    "genre": "media_reviews/douban",
+    "needed": 1500,
+    "selected": 0,
+    "bucket_deficits": {}
+  },
+  {
+    "lang": "zh",
+    "genre": "news",
+    "needed": 1200,
+    "selected": 0,
+    "bucket_deficits": {}
+  },
+  {
+    "lang": "ru",
+    "genre": "social_media",
+    "needed": 2640,
+    "selected": 1869,
+    "bucket_deficits": {
+      "short": 363,
+      "long": 288,
+      "extra_long": 395
+    }
+  },
+  {
+    "lang": "ru",
+    "genre": "news",
+    "needed": 960,
+    "selected": 0,
+    "bucket_deficits": {}
+  },
+  {
+    "lang": "en",
+    "genre": "social_media",
+    "needed": 9450,
+    "selected": 1678,
+    "bucket_deficits": {
+      "long": 1787,
+      "medium": 3574,
+      "short": 994,
+      "extra_long": 1417
+    }
+  },
+  {
+    "lang": "en",
+    "genre": "blog",
+    "needed": 3150,
+    "selected": 0,
+    "bucket_deficits": {}
+  },
+  {
+    "lang": "en",
+    "genre": "ecommerce_reviews",
+    "needed": 2100,
+    "selected": 0,
+    "bucket_deficits": {}
+  },
+  {
+    "lang": "en",
+    "genre": "research_paper",
+    "needed": 2100,
+    "selected": 0,
+    "bucket_deficits": {}
+  },
+  {
+    "lang": "en",
+    "genre": "news",
+    "needed": 4200,
+    "selected": 0,
+    "bucket_deficits": {}
+  },
+  {
+    "lang": "ja",
+    "genre": "social_media",
+    "needed": 1650,
+    "selected": 1100,
+    "bucket_deficits": {
+      "long": 180,
+      "extra_long": 231
+    }
+  },
+  {
+    "lang": "ja",
+    "genre": "news",
+    "needed": 600,
+    "selected": 0,
+    "bucket_deficits": {}
+  }
+]
