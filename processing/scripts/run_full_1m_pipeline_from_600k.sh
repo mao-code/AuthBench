@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-cd "$ROOT_DIR"
+# ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+# cd "$ROOT_DIR"
 
 # Master pipeline:
 # 1) phase1 build at 600K
@@ -12,6 +12,10 @@ cd "$ROOT_DIR"
 # Default behavior keeps language/genre/length targeting logic from repo:
 # - phase1 wrapper defaults ALLOW_OTHER_LANGUAGES=0
 # - phase2 path does not pass --allow-other-languages
+
+REPO_ROOT="/home/mh2653/AuthBench"
+export PYTHONPATH="${REPO_ROOT}"
+# sbatch -p rush --nodelist=rush-compute-01 --gres=gpu:1 --ntasks=1 --cpus-per-task=4 --mem=64G -t 720:00:00 processing/scripts/run_full_1m_pipeline_from_600k.sh
 
 RUN_PHASE1="${RUN_PHASE1:-1}"
 RUN_PHASE2="${RUN_PHASE2:-1}"
@@ -23,15 +27,15 @@ PHASE1_TOTAL_DOCS="${PHASE1_TOTAL_DOCS:-600000}"
 PHASE2_TOTAL_DOCS="${PHASE2_TOTAL_DOCS:-600000}"
 PHASE1_ALLOW_OTHER_LANGUAGES="${PHASE1_ALLOW_OTHER_LANGUAGES:-0}"
 
-PHASE1_DIR="${PHASE1_DIR:-processing/outputs/stage2_${PHASE1_RUN_TAG}}"
-PHASE2_DIR="${PHASE2_DIR:-processing/second_phase_web_crawling/outputs/stage2_${PHASE2_RUN_TAG}}"
+PHASE1_DIR="${PHASE1_DIR:-processing/outputs/stage2_${PHASE1_RUN_TAG}_2}"
+PHASE2_DIR="${PHASE2_DIR:-processing/second_phase_web_crawling/outputs/stage2_${PHASE2_RUN_TAG}_2}"
 
 COMBINE_TOTAL_DOCS="${COMBINE_TOTAL_DOCS:-1000000}"
 COMBINE_MIN_PHASE2_SHARE="${COMBINE_MIN_PHASE2_SHARE:-0.40}"
 COMBINE_ALLOW_LOWER_PHASE2_SHARE="${COMBINE_ALLOW_LOWER_PHASE2_SHARE:-0}"
 COMBINE_DISABLE_DEDUP="${COMBINE_DISABLE_DEDUP:-0}"
 
-COMBINED_OUTPUT_DIR="${COMBINED_OUTPUT_DIR:-processing/outputs/combined_phase1_phase2_1m_from600k}"
+COMBINED_OUTPUT_DIR="${COMBINED_OUTPUT_DIR:-processing/outputs/combined_phase1_phase2_1m_from600k_2}"
 COMBINED_REPORT_PATH="${COMBINED_REPORT_PATH:-${COMBINED_OUTPUT_DIR}/merge_summary.json}"
 
 echo "=== Full 1M pipeline from 600K + 600K ==="
@@ -47,7 +51,7 @@ if [[ "${RUN_PHASE1}" == "1" ]]; then
   TOTAL_DOCS="${PHASE1_TOTAL_DOCS}" \
   POST_TARGET_TOTAL="${PHASE1_TOTAL_DOCS}" \
   ALLOW_OTHER_LANGUAGES="${PHASE1_ALLOW_OTHER_LANGUAGES}" \
-  bash processing/scripts/run_phase1_construction_600k.sh
+  bash ${REPO_ROOT}/processing/scripts/run_phase1_construction_600k.sh
   echo ""
 fi
 
@@ -56,7 +60,7 @@ if [[ "${RUN_PHASE2}" == "1" ]]; then
   RUN_TAG="${PHASE2_RUN_TAG}" \
   TARGET_TOTAL="${PHASE2_TOTAL_DOCS}" \
   POST_TARGET_TOTAL="${PHASE2_TOTAL_DOCS}" \
-  bash processing/second_phase_web_crawling/scripts/run_webcrawl_600k_all4.sh
+  bash ${REPO_ROOT}/processing/second_phase_web_crawling/scripts/run_webcrawl_600k_all4.sh
   echo ""
 fi
 
@@ -80,7 +84,7 @@ if [[ "${RUN_COMBINE}" == "1" ]]; then
   MIN_PHASE2_SHARE="${COMBINE_MIN_PHASE2_SHARE}" \
   ALLOW_LOWER_PHASE2_SHARE="${COMBINE_ALLOW_LOWER_PHASE2_SHARE}" \
   DISABLE_DEDUP="${COMBINE_DISABLE_DEDUP}" \
-  bash processing/scripts/combine_phase1_phase2_1m.sh
+  bash ${REPO_ROOT}/processing/scripts/combine_phase1_phase2_1m.sh
 
   COMBINED_REPORT_PATH="${COMBINED_REPORT_PATH}" python3 - <<'PY'
 import json
