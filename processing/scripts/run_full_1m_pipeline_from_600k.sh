@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-# cd "$ROOT_DIR"
+REPO_ROOT="${REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
+cd "$REPO_ROOT"
 
 # Master pipeline:
 # 1) phase1 build at 600K
@@ -13,7 +13,6 @@ set -euo pipefail
 # - phase1 wrapper defaults ALLOW_OTHER_LANGUAGES=0
 # - phase2 path does not pass --allow-other-languages
 
-REPO_ROOT="/home/mh2653/AuthBench"
 export PYTHONPATH="${REPO_ROOT}"
 # sbatch -p rush --nodelist=rush-compute-01 --gres=gpu:1 --ntasks=1 --cpus-per-task=4 --mem=64G -t 720:00:00 processing/scripts/run_full_1m_pipeline_from_600k.sh
 

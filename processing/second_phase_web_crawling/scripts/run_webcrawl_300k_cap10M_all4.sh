@@ -8,8 +8,11 @@ set -euo pipefail
 # - Wikisource
 # - YTComments (YouTube Data API)
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
+# ROOT_DIR can be overridden by environment.
+ROOT_DIR="${ROOT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)}"
 cd "$ROOT_DIR"
+export PYTHONPATH="${ROOT_DIR}"
+# sbatch -p rush --nodelist=rush-compute-01 --gres=gpu:1 --ntasks=1 --cpus-per-task=4 --mem=64G -t 720:00:00 processing/second_phase_web_crawling/scripts/run_webcrawl_300k_cap10M_all4.sh
 
 # Load .env first (YouTube API key), then optional StackExchange env file.
 if [[ -f "$ROOT_DIR/.env" ]]; then
@@ -80,6 +83,14 @@ YT_ONLY="${YT_ONLY:-0}"
 AUTO_RAMP="${AUTO_RAMP:-1}"
 RAMP_MAX_ROUNDS="${RAMP_MAX_ROUNDS:-8}"
 RAMP_FACTOR="${RAMP_FACTOR:-2}"
+STACKEXCHANGE_API_SAFE_MODE="${STACKEXCHANGE_API_SAFE_MODE:-1}"
+STACKEXCHANGE_API_SAFE_MAX_REQUESTS="${STACKEXCHANGE_API_SAFE_MAX_REQUESTS:-250}"
+STACKEXCHANGE_API_SAFE_MAX_SITES_NO_KEY="${STACKEXCHANGE_API_SAFE_MAX_SITES_NO_KEY:-2}"
+STACKEXCHANGE_API_SAFE_MAX_SITES_WITH_KEY="${STACKEXCHANGE_API_SAFE_MAX_SITES_WITH_KEY:-5}"
+STACKEXCHANGE_API_SAFE_MAX_POSTS_PER_SITE_NO_KEY="${STACKEXCHANGE_API_SAFE_MAX_POSTS_PER_SITE_NO_KEY:-3000}"
+STACKEXCHANGE_API_SAFE_MAX_POSTS_PER_SITE_WITH_KEY="${STACKEXCHANGE_API_SAFE_MAX_POSTS_PER_SITE_WITH_KEY:-15000}"
+STACKEXCHANGE_API_SAFE_MAX_COMMENTS_PER_SITE_NO_KEY="${STACKEXCHANGE_API_SAFE_MAX_COMMENTS_PER_SITE_NO_KEY:-0}"
+STACKEXCHANGE_API_SAFE_MAX_COMMENTS_PER_SITE_WITH_KEY="${STACKEXCHANGE_API_SAFE_MAX_COMMENTS_PER_SITE_WITH_KEY:-1000}"
 
 # Processing controls
 MAX_DOCUMENTS_PER_DATASET="${MAX_DOCUMENTS_PER_DATASET:-10000000}"
@@ -132,6 +143,80 @@ bump_cap() {
   fi
   echo "$next"
 }
+
+apply_stackexchange_api_guardrails() {
+  if [[ "$STACKEXCHANGE_MODE" != "api" || "$STACKEXCHANGE_API_SAFE_MODE" != "1" || "$SKIP_STACKEXCHANGE" == "1" ]]; then
+    return
+  fi
+
+  local safe_max_sites
+  local safe_max_posts_per_site
+  local safe_max_comments_per_site
+  if [[ -n "${STACKEXCHANGE_API_KEY:-}" ]]; then
+    safe_max_sites="$STACKEXCHANGE_API_SAFE_MAX_SITES_WITH_KEY"
+    safe_max_posts_per_site="$STACKEXCHANGE_API_SAFE_MAX_POSTS_PER_SITE_WITH_KEY"
+    safe_max_comments_per_site="$STACKEXCHANGE_API_SAFE_MAX_COMMENTS_PER_SITE_WITH_KEY"
+  else
+    safe_max_sites="$STACKEXCHANGE_API_SAFE_MAX_SITES_NO_KEY"
+    safe_max_posts_per_site="$STACKEXCHANGE_API_SAFE_MAX_POSTS_PER_SITE_NO_KEY"
+    safe_max_comments_per_site="$STACKEXCHANGE_API_SAFE_MAX_COMMENTS_PER_SITE_NO_KEY"
+  fi
+
+  IFS=',' read -r -a _se_sites <<<"$STACKEXCHANGE_SITES"
+  if (( ${#_se_sites[@]} > safe_max_sites )); then
+    STACKEXCHANGE_SITES="$(IFS=,; echo "${_se_sites[*]:0:${safe_max_sites}}")"
+    echo "StackExchange API safe mode: limiting sites to first ${safe_max_sites}."
+  fi
+
+  if (( STACKEXCHANGE_MAX_POSTS_PER_SITE > safe_max_posts_per_site )); then
+    STACKEXCHANGE_MAX_POSTS_PER_SITE="$safe_max_posts_per_site"
+    echo "StackExchange API safe mode: capping posts/site to ${STACKEXCHANGE_MAX_POSTS_PER_SITE}."
+  fi
+  if (( STACKEXCHANGE_MAX_POSTS_PER_SITE_MAX > safe_max_posts_per_site )); then
+    STACKEXCHANGE_MAX_POSTS_PER_SITE_MAX="$safe_max_posts_per_site"
+  fi
+  if (( STACKEXCHANGE_MAX_COMMENTS_PER_SITE > safe_max_comments_per_site )); then
+    STACKEXCHANGE_MAX_COMMENTS_PER_SITE="$safe_max_comments_per_site"
+    echo "StackExchange API safe mode: capping comments/site to ${STACKEXCHANGE_MAX_COMMENTS_PER_SITE}."
+  fi
+  if (( STACKEXCHANGE_MAX_COMMENTS_PER_SITE == 0 )); then
+    STACKEXCHANGE_SKIP_COMMENTS=1
+  fi
+  if [[ "$AUTO_RAMP" == "1" ]]; then
+    AUTO_RAMP=0
+    echo "StackExchange API safe mode: AUTO_RAMP disabled to avoid repeated quota burn."
+  fi
+
+  IFS=',' read -r -a _se_sites <<<"$STACKEXCHANGE_SITES"
+  local site_count="${#_se_sites[@]}"
+  if (( site_count == 0 )); then
+    return
+  fi
+
+  local requests_per_site=$(( ((STACKEXCHANGE_MAX_POSTS_PER_SITE + 99) / 100) * 2 ))
+  if [[ "$STACKEXCHANGE_SKIP_COMMENTS" != "1" ]]; then
+    requests_per_site=$(( requests_per_site + ((STACKEXCHANGE_MAX_COMMENTS_PER_SITE + 99) / 100) ))
+  fi
+  local estimated_total_requests=$(( requests_per_site * site_count ))
+
+  if (( estimated_total_requests > STACKEXCHANGE_API_SAFE_MAX_REQUESTS )); then
+    local per_site_budget=$(( STACKEXCHANGE_API_SAFE_MAX_REQUESTS / site_count ))
+    if (( per_site_budget < 2 )); then
+      per_site_budget=2
+    fi
+    local budget_posts=$(( (per_site_budget / 2) * 100 ))
+    if (( budget_posts < 100 )); then
+      budget_posts=100
+    fi
+    if (( STACKEXCHANGE_MAX_POSTS_PER_SITE > budget_posts )); then
+      STACKEXCHANGE_MAX_POSTS_PER_SITE="$budget_posts"
+      STACKEXCHANGE_MAX_POSTS_PER_SITE_MAX="$budget_posts"
+      echo "StackExchange API safe mode: further reducing posts/site to ${budget_posts} for request budget."
+    fi
+  fi
+}
+
+apply_stackexchange_api_guardrails
 
 SE_CAP="$STACKEXCHANGE_MAX_POSTS_PER_SITE"
 GB_CAP="$GUTENBERG_MAX_DOCS"
