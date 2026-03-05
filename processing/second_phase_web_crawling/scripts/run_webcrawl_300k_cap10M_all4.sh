@@ -81,7 +81,6 @@ SKIP_YTCOMMENTS="${SKIP_YTCOMMENTS:-0}"
 YT_ONLY="${YT_ONLY:-0}"
 
 AUTO_RAMP="${AUTO_RAMP:-1}"
-REUSE_STAGE1_OUTPUT="${REUSE_STAGE1_OUTPUT:-0}"
 RAMP_MAX_ROUNDS="${RAMP_MAX_ROUNDS:-8}"
 RAMP_FACTOR="${RAMP_FACTOR:-2}"
 STACKEXCHANGE_API_SAFE_MODE="${STACKEXCHANGE_API_SAFE_MODE:-1}"
@@ -100,9 +99,8 @@ CHUNK_PROBABILITY="${CHUNK_PROBABILITY:-0.7}"
 TRUNCATE_TO_TOKENS="${TRUNCATE_TO_TOKENS:-2000}"
 
 MANIFEST_PATH="${MANIFEST_PATH:-processing/second_phase_web_crawling/datasets_manifest.json}"
-MONITOR_REPORT_PATH="${MONITOR_REPORT_PATH:-processing/second_phase_web_crawling/outputs/monitoring/pipeline_dynamics_${RUN_TAG}.json}"
-BUILD_OUTPUT_DIR="${BUILD_OUTPUT_DIR:-processing/second_phase_web_crawling/outputs/stage1_${RUN_TAG}}"
-POSTPROCESS_OUTPUT_DIR="${POSTPROCESS_OUTPUT_DIR:-processing/second_phase_web_crawling/outputs/stage2_${RUN_TAG}}"
+OUTPUT_DIR="${OUTPUT_DIR:-processing/second_phase_web_crawling/outputs/pipeline_${RUN_TAG}}"
+MONITOR_REPORT_PATH="${MONITOR_REPORT_PATH:-${OUTPUT_DIR}/pipeline_dynamics.json}"
 
 if [[ "$YT_ONLY" == "1" ]]; then
   SKIP_STACKEXCHANGE=1
@@ -114,7 +112,7 @@ fi
 read -r -a STAGE_ARGS <<<"$PIPELINE_STAGES"
 RUN_CONSTRUCT=0
 for stage in "${STAGE_ARGS[@]}"; do
-  if [[ "$stage" == "construct" || "$stage" == "build" || "$stage" == "postprocess" || "$stage" == "monitor" ]]; then
+  if [[ "$stage" == "construct" ]]; then
     RUN_CONSTRUCT=1
     break
   fi
@@ -228,7 +226,7 @@ YT_CAP="$YTCOMMENTS_MAX_DOCS"
 ROUND=1
 FINAL_AFTER_SAMPLING=0
 
-echo "[1/3] Running crawl + construct (target=${TARGET_TOTAL})"
+echo "[1/3] Running crawl + unified pipeline (target=${TARGET_TOTAL})"
 echo "skip flags: stackexchange=${SKIP_STACKEXCHANGE} gutenberg=${SKIP_GUTENBERG} wikisource=${SKIP_WIKISOURCE} ytcomments=${SKIP_YTCOMMENTS}"
 echo "stages: ${PIPELINE_STAGES}"
 
@@ -271,8 +269,7 @@ while true; do
     --ytcomments-sleep-seconds "$YTCOMMENTS_SLEEP_SECONDS"
     --monitor-report-path "$MONITOR_REPORT_PATH"
     --monitor-overwrite
-    --build-output-dir "$BUILD_OUTPUT_DIR"
-    --postprocess-output-dir "$POSTPROCESS_OUTPUT_DIR"
+    --output-dir "$OUTPUT_DIR"
     --total-docs "$TARGET_TOTAL"
     --post-target-total "$POST_TARGET_TOTAL"
     --max-documents-per-dataset "$MAX_DOCUMENTS_PER_DATASET"
@@ -305,9 +302,6 @@ while true; do
   if [[ "$SKIP_YTCOMMENTS" == "1" ]]; then
     CMD+=(--skip-ytcomments)
   fi
-  if [[ "$REUSE_STAGE1_OUTPUT" == "1" ]]; then
-    CMD+=(--reuse-stage1-output)
-  fi
 
   "${CMD[@]}"
 
@@ -316,12 +310,12 @@ while true; do
     break
   fi
 
-  if [[ ! -f "$BUILD_OUTPUT_DIR/processing_summary.json" ]]; then
-    echo "Error: missing $BUILD_OUTPUT_DIR/processing_summary.json after round ${ROUND}"
+  if [[ ! -f "$MONITOR_REPORT_PATH" ]]; then
+    echo "Error: missing monitoring report at $MONITOR_REPORT_PATH after round ${ROUND}"
     exit 1
   fi
 
-  FINAL_AFTER_SAMPLING="$(jq -r '.after_sampling.total // 0' "$BUILD_OUTPUT_DIR/processing_summary.json")"
+  FINAL_AFTER_SAMPLING="$(jq -r '.stage_transitions.build_after_sampling_total // 0' "$MONITOR_REPORT_PATH")"
   echo "round=${ROUND} after_sampling=${FINAL_AFTER_SAMPLING} target=${TARGET_TOTAL}"
 
   if [[ "$AUTO_RAMP" != "1" ]]; then
@@ -360,21 +354,14 @@ done
 
 echo "[2/3] Summaries"
 echo "Monitor:      $MONITOR_REPORT_PATH"
-echo "Stage1:       $BUILD_OUTPUT_DIR"
-echo "Stage2:       $POSTPROCESS_OUTPUT_DIR"
-echo "Final after_sampling (stage1): $FINAL_AFTER_SAMPLING"
+echo "Output:       $OUTPUT_DIR"
+echo "Build-stage after_sampling: $FINAL_AFTER_SAMPLING"
 echo "Final caps: stackexchange_max_posts_per_site=$SE_CAP gutenberg_max_docs=$GB_CAP wikisource_max_docs_per_wiki=$WS_CAP_PER_WIKI wikisource_max_total_docs=$WS_CAP_TOTAL ytcomments_max_docs=$YT_CAP"
 
-if [[ -f "$BUILD_OUTPUT_DIR/processing_summary.json" ]]; then
+if [[ -f "$OUTPUT_DIR/pipeline_summary.json" ]]; then
   echo ""
-  echo "Stage1 processing summary:"
-  jq '{after_author_filter: .after_author_filter.total, after_sampling: .after_sampling.total, splits: {train: .splits.train.total, dev: .splits.dev.total, test: .splits.test.total}}' "$BUILD_OUTPUT_DIR/processing_summary.json"
-fi
-
-if [[ -f "$POSTPROCESS_OUTPUT_DIR/postprocessing_summary.json" ]]; then
-  echo ""
-  echo "Stage2 postprocessing summary:"
-  jq '{before_filter: .before_filter.total, after_filter: .after_filter.total, after_dedup: .after_dedup.total, after_sampling: .after_sampling.total, split_documents: {train: .splits.train.documents, dev: .splits.dev.documents, test: .splits.test.documents}, split_candidates: {train: .splits.train.candidates, dev: .splits.dev.candidates, test: .splits.test.candidates}}' "$POSTPROCESS_OUTPUT_DIR/postprocessing_summary.json"
+  echo "Unified pipeline summary:"
+  jq '{build: {after_author_filter: .build.summary.after_author_filter.total, after_sampling: .build.summary.after_sampling.total}, final: {before_filter: .finalize.input_docs.total, after_filter: .finalize.after_filter.total, after_dedup: .finalize.after_dedup.total, after_sampling: .finalize.after_sampling.total, split_documents: {train: .finalize.splits.train.documents, dev: .finalize.splits.dev.documents, test: .finalize.splits.test.documents}, split_candidates: {train: .finalize.splits.train.candidates, dev: .finalize.splits.dev.candidates, test: .finalize.splits.test.candidates}}}' "$OUTPUT_DIR/pipeline_summary.json"
 fi
 
 echo "[3/3] Done"

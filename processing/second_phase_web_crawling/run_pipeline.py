@@ -18,18 +18,15 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
             "End-to-end runner for second-phase web crawling + unified AuthBench "
-            "construction (build + postprocess + dedup + monitoring report)."
+            "construction (multi-stage processing + monitoring report)."
         )
     )
     parser.add_argument(
         "--stages",
         nargs="+",
         default=["crawl", "construct"],
-        choices=["crawl", "construct", "monitor", "build", "postprocess"],
-        help=(
-            "Which stages to execute (default: crawl + construct). "
-            "Legacy stage names monitor/build/postprocess map to construct."
-        ),
+        choices=["crawl", "construct"],
+        help="Which stages to execute (default: crawl + construct).",
     )
 
     parser.add_argument(
@@ -132,29 +129,24 @@ def parse_args() -> argparse.Namespace:
 
     # Core processing options
     parser.add_argument(
-        "--build-output-dir",
+        "--output-dir",
         type=Path,
-        default=Path("processing/second_phase_web_crawling/outputs/stage1"),
+        default=Path("processing/second_phase_web_crawling/outputs/pipeline"),
+        help="Final unified pipeline output directory.",
     )
     parser.add_argument(
-        "--postprocess-output-dir",
+        "--work-dir",
         type=Path,
-        default=Path("processing/second_phase_web_crawling/outputs/stage2"),
+        default=None,
+        help="Optional persistent working directory for intermediate artifacts.",
     )
     parser.add_argument(
         "--monitor-report-path",
         type=Path,
-        default=Path("processing/second_phase_web_crawling/outputs/monitoring/pipeline_dynamics.json"),
+        default=None,
+        help="Monitoring report path (default: <output-dir>/pipeline_dynamics.json).",
     )
     parser.add_argument("--monitor-overwrite", action="store_true")
-    parser.add_argument(
-        "--reuse-stage1-output",
-        action="store_true",
-        help=(
-            "Skip stage-1 build in unified constructor and reuse existing "
-            "--build-output-dir data for stage-2."
-        ),
-    )
 
     parser.add_argument("--total-docs", type=int, default=100000)
     parser.add_argument("--seed", type=int, default=42)
@@ -312,6 +304,7 @@ def run_crawl_stage(args: argparse.Namespace) -> None:
 
 def run_construct_stage(args: argparse.Namespace) -> None:
     py = sys.executable
+    report_path = args.monitor_report_path or (args.output_dir / "pipeline_dynamics.json")
     cmd = [
         py,
         "-m",
@@ -319,11 +312,9 @@ def run_construct_stage(args: argparse.Namespace) -> None:
         "--manifest",
         str(args.manifest_path),
         "--report-path",
-        str(args.monitor_report_path),
-        "--stage1-output-dir",
-        str(args.build_output_dir),
+        str(report_path),
         "--output-dir",
-        str(args.postprocess_output_dir),
+        str(args.output_dir),
         "--total-docs",
         str(args.total_docs),
         "--seed",
@@ -347,8 +338,8 @@ def run_construct_stage(args: argparse.Namespace) -> None:
         cmd.append("--allow-other-languages")
     if args.monitor_overwrite:
         cmd.append("--overwrite-report")
-    if args.reuse_stage1_output:
-        cmd.append("--reuse-stage1-output")
+    if args.work_dir is not None:
+        cmd.extend(["--work-dir", str(args.work_dir)])
     if args.max_documents_per_dataset is not None:
         cmd.extend(["--max-documents-per-dataset", str(args.max_documents_per_dataset)])
     if args.dataset_max_docs:
@@ -380,7 +371,7 @@ def main() -> None:
     )
 
     stages = set(args.stages)
-    if "crawl" not in stages and not args.reuse_stage1_output and not args.manifest_path.exists():
+    if "crawl" not in stages and not args.manifest_path.exists():
         raise FileNotFoundError(
             f"Manifest not found at {args.manifest_path}. Run stage 'crawl' first or provide a manifest."
         )
@@ -388,18 +379,7 @@ def main() -> None:
     if "crawl" in stages:
         run_crawl_stage(args)
 
-    construct_aliases = {"construct", "monitor", "build", "postprocess"}
-    if stages & construct_aliases:
-        if args.reuse_stage1_output and "crawl" in stages:
-            logger.warning(
-                "--reuse-stage1-output is set while running crawl+construct; "
-                "construct stage will reuse existing stage-1 outputs."
-            )
-        if "construct" not in stages:
-            logger.info(
-                "Legacy stage alias detected (%s); running unified construct stage.",
-                ", ".join(sorted(stages & {"monitor", "build", "postprocess"})),
-            )
+    if "construct" in stages:
         run_construct_stage(args)
 
 

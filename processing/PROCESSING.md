@@ -9,11 +9,9 @@ python -m processing.construct_benchmark ...
 ```
 
 It combines:
-- stage-1 build (ingest/chunk/filter/author-caps/sampling/split)
-- stage-2 post-filter + dedup + final resampling/split
+- build (ingest/chunk/filter/author-caps/sampling/split)
+- quality filtering + dedup + final resampling/split
 - integrated monitoring report
-
-Optional mode: pass `--reuse-stage1-output` to skip stage-1 rebuild and apply stage-2 to an existing stage-1 directory.
 
 You no longer need to run a separate monitor command to obtain stage-by-stage stats.
 
@@ -60,9 +58,9 @@ Final `ground_truth.jsonl` rows:
 
 ---
 
-## 2. Stage-1 Build Logic
+## 2. Build Stage Logic
 
-Stage-1 is equivalent to the former `build_benchmark.py` behavior:
+Build stage behavior is equivalent to the former `build_benchmark.py` behavior:
 
 1. Load datasets from manifest (`processing/datasets.py`).
 2. Optional bounded stream shuffle per dataset.
@@ -79,16 +77,13 @@ Stage-1 is equivalent to the former `build_benchmark.py` behavior:
 8. Stratified split by language (`train/dev/test`).
 9. Split `documents.jsonl` materialization plus retrieval set materialization (`candidates/queries/ground_truth`).
 
-Outputs:
-- `<stage1_output_dir>/{train,dev,test}/*.jsonl`
-- `<stage1_output_dir>/processing_summary.json`
-- `<stage1_output_dir>/sampling_shortfall.json`
+Build artifacts are internal (temporary by default, or persisted if `--work-dir` is set).
 
 ---
 
-## 3. Stage-2 Postprocess + Dedup Logic
+## 3. Quality Filter + Dedup + Final Sampling
 
-Input: stage-1 split `documents.jsonl` from all splits (fallback to retrieval files for legacy outputs).
+Input: build-stage documents from the internal pipeline working set.
 
 ### 3.1 Post filtering
 
@@ -124,8 +119,8 @@ After filter+dedup:
 
 Outputs:
 - `<output_dir>/{train,dev,test}/*.jsonl`
-- `<output_dir>/postprocessing_summary.json`
-- `<output_dir>/postprocess_dirty.log` (if any drop records)
+- `<output_dir>/pipeline_summary.json`
+- `<output_dir>/quality_filter_drops.log` (if any drop records)
 
 ---
 
@@ -134,15 +129,15 @@ Outputs:
 `processing.construct_benchmark` writes a unified report:
 
 - pipeline configuration
-- stage-1 summary and shortfall
-- stage-2 filter + dedup + sampling stats
+- build-stage summary and shortfall
+- quality-filter + dedup + sampling stats
 - transition counts across stages
 
 Default report path:
-- `processing/outputs/monitoring/pipeline_dynamics.json`
+- `<output_dir>/pipeline_dynamics.json`
 
-For phase2 runs this is usually set to:
-- `processing/second_phase_web_crawling/outputs/monitoring/pipeline_dynamics_<run_tag>.json`
+For phase2 runs with the wrapper script, this defaults to:
+- `<output_dir>/pipeline_dynamics.json`
 
 ---
 
@@ -153,9 +148,8 @@ For phase2 runs this is usually set to:
 ```bash
 python -m processing.construct_benchmark \
   --manifest processing/datasets_manifest.json \
-  --stage1-output-dir processing/outputs/stage1_phase1_official \
-  --output-dir processing/outputs/stage2_phase1_official \
-  --report-path processing/outputs/monitoring/pipeline_dynamics_phase1_official.json \
+  --output-dir processing/outputs/pipeline_phase1_official \
+  --report-path processing/outputs/pipeline_phase1_official/pipeline_dynamics.json \
   --overwrite-report \
   --total-docs 300000 \
   --allow-other-languages \
@@ -178,13 +172,14 @@ Unified phase2 runner:
 ```bash
 python -m processing.second_phase_web_crawling.run_pipeline \
   --stages crawl construct \
-  --total-docs 60000 \
-  --post-target-total 60000 \
+  --output-dir processing/second_phase_web_crawling/outputs/pipeline_all4_t300k_cap10M \
+  --total-docs 300000 \
+  --post-target-total 300000 \
   --monitor-overwrite
 ```
 
 Recommended script:
-- `processing/second_phase_web_crawling/scripts/run_webcrawl_60k_all4.sh`
+- `processing/second_phase_web_crawling/scripts/run_webcrawl_300k_cap10M_all4.sh`
 
 ---
 
@@ -192,8 +187,8 @@ Recommended script:
 
 ```bash
 python -m processing.combine_phase_benchmarks \
-  --phase1-dir processing/outputs/official_ttl300k_cap10M_sf10k_postprocessed_balanced \
-  --phase2-dir processing/second_phase_web_crawling/outputs/stage2_all4_t60k \
+  --phase1-dir processing/outputs/pipeline_phase1_official \
+  --phase2-dir processing/second_phase_web_crawling/outputs/pipeline_all4_t300k_cap10M \
   --output-dir processing/outputs/combined_phase1_phase2_1m \
   --report-path processing/outputs/combined_phase1_phase2_1m/merge_summary.json \
   --total-docs 1000000 \
@@ -202,7 +197,7 @@ python -m processing.combine_phase_benchmarks \
 ```
 
 Script wrapper:
-- `processing/scripts/combine_phase1_phase2_1m.sh`
+- `processing/scripts/combine_phase1_phase2_300k_cap10M.sh`
 
 ---
 

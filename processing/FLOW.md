@@ -9,11 +9,8 @@ python -m processing.construct_benchmark ...
 ```
 
 The constructor executes all stages in one run and writes:
-- stage-1 outputs (`processing_summary.json`, `sampling_shortfall.json`, split JSONL files)
-- final outputs (`postprocessing_summary.json`, split JSONL files)
+- one unified output directory (split JSONL files + pipeline summary)
 - one unified monitoring report (`pipeline_dynamics*.json`)
-
-You can also reuse an existing stage-1 directory with `--reuse-stage1-output`, which skips stage-1 rebuild and runs stage-2 directly on stage-1 docs.
 
 ---
 
@@ -31,7 +28,7 @@ Each record is normalized into:
 
 ---
 
-## Stage 1: Build Candidates (former `build_benchmark.py`)
+## Stage 1: Build Corpus (former `build_benchmark.py`)
 
 1. Stream records from each dataset.
 2. Optionally bounded-shuffle each dataset stream.
@@ -44,16 +41,15 @@ Each record is normalized into:
 8. Stratified split (`train/dev/test`) by language.
 9. Write split `documents.jsonl` and retrieval files (`candidates.jsonl`, `queries.jsonl`, `ground_truth.jsonl`).
 
-Stage-1 outputs:
-- `<stage1_output_dir>/{train,dev,test}/*.jsonl`
-- `<stage1_output_dir>/processing_summary.json`
-- `<stage1_output_dir>/sampling_shortfall.json`
+Build artifacts are written to an internal working directory.
+- default: temporary directory (auto-cleaned)
+- optional: persistent with `--work-dir`
 
 ---
 
-## Stage 2: Post-Filter + Dedup + Final Sampling
+## Stage 2-4: Quality Filter + Dedup + Final Sampling
 
-Input: stage-1 `documents.jsonl` from all splits (with fallback to retrieval files for legacy runs).
+Input: build-stage documents in memory/working-dir artifacts.
 
 ### 2.1 Post-filter
 
@@ -78,7 +74,7 @@ Implemented in `processing/deduplication.py`:
    - optional same-language and cross-source constraints
    - drop weaker duplicate author profile
 
-All dedup stats are written into `postprocessing_summary.json` and the unified report.
+All dedup stats are written into `pipeline_summary.json` and the unified report.
 
 ### 2.3 Final sampling and split
 
@@ -88,11 +84,11 @@ After filtering+dedup:
 - split into `train/dev/test`
 - write retrieval files
 
-Stage-2 outputs:
+Pipeline outputs:
 - `<output_dir>/{train,dev,test}/*.jsonl`
   - includes `documents.jsonl` (full split docs) plus retrieval files.
-- `<output_dir>/postprocessing_summary.json`
-- `<output_dir>/postprocess_dirty.log` (if any dropped docs)
+- `<output_dir>/pipeline_summary.json`
+- `<output_dir>/quality_filter_drops.log` (if any dropped docs)
 
 ---
 
@@ -102,12 +98,12 @@ No separate `monitor_pipeline` run is required.
 
 The constructor writes one report including:
 - pipeline inputs and knobs
-- stage-1 summary and sampling shortfall
-- stage-2 filtering, dedup, and split stats
+- build-stage summary and sampling shortfall
+- quality-filter/dedup/split stats
 - stage transitions (`build -> filter -> dedup -> final sampling`)
 
 Default report path:
-- `processing/outputs/monitoring/pipeline_dynamics.json`
+- `<output_dir>/pipeline_dynamics.json`
 
 ---
 
@@ -135,6 +131,6 @@ Flow:
 - Phase1 full construction:
   - `processing/scripts/run_phase1_construction.sh`
 - Phase2 crawl + construction:
-  - `processing/second_phase_web_crawling/scripts/run_webcrawl_60k_all4.sh`
-- Phase1 + Phase2 merge to 1M:
-  - `processing/scripts/combine_phase1_phase2_1m.sh`
+  - `processing/second_phase_web_crawling/scripts/run_webcrawl_300k_cap10M_all4.sh`
+- Phase1 + Phase2 merge:
+  - `processing/scripts/combine_phase1_phase2_300k_cap10M.sh`

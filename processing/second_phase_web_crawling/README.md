@@ -1,7 +1,7 @@
 # Second-Phase Web Crawling
 
 This folder adds new web-sourced corpora and keeps the downstream benchmark logic exactly aligned with `processing/`:
-- unified constructor (build + postprocess + dedup + monitoring): `processing.construct_benchmark`
+- unified constructor (multi-stage pipeline + monitoring): `processing.construct_benchmark`
 
 ## Sources Included
 
@@ -62,11 +62,12 @@ Notes:
 - `--stackexchange-download-mode archive` exists for legacy/mirror workflows.
 - `crawl_ytcomments.py` uses YouTube Data API v3 key auth (`YOUTUBE_API_KEY` environment variable).
 
-### 2) Run unified construct with the same pipeline logic
+### 2) Run unified pipeline construction
 
 ```bash
 python -m processing.second_phase_web_crawling.run_pipeline \
   --stages construct \
+  --output-dir processing/second_phase_web_crawling/outputs/pipeline_example \
   --total-docs 100000 \
   --allow-other-languages \
   --max-documents-per-dataset 10000000 \
@@ -75,26 +76,13 @@ python -m processing.second_phase_web_crawling.run_pipeline \
   --truncate-to-tokens 2000
 ```
 
-To rerun only stage-2 on an existing stage-1 directory:
-
-```bash
-python -m processing.second_phase_web_crawling.run_pipeline \
-  --stages construct \
-  --reuse-stage1-output \
-  --build-output-dir processing/second_phase_web_crawling/outputs/stage1_<run_tag> \
-  --postprocess-output-dir processing/second_phase_web_crawling/outputs/stage2_<new_run_tag> \
-  --monitor-overwrite
-```
-
 Outputs:
-- Monitor report: `processing/second_phase_web_crawling/outputs/monitoring/`
-- Stage-1 benchmark outputs: `processing/second_phase_web_crawling/outputs/stage1/`
-- Final postprocessed outputs: `processing/second_phase_web_crawling/outputs/stage2/`
+- Unified output folder: `processing/second_phase_web_crawling/outputs/pipeline_<run_tag>/`
+- Monitoring report: `<output_dir>/pipeline_dynamics.json` (or custom `--monitor-report-path`)
+- Pipeline summary: `<output_dir>/pipeline_summary.json`
 
-Both stage directories now include split-level `documents.jsonl` files; stage-2 filtering/dedup is applied to those full stage-1 split docs (not candidate-only rows).
-
-### 3) One-shot script for 4 datasets at 60K target
+### 3) One-shot script for 4 datasets at 300K target
 
 ```bash
-bash processing/second_phase_web_crawling/scripts/run_webcrawl_60k_all4.sh
+bash processing/second_phase_web_crawling/scripts/run_webcrawl_300k_cap10M_all4.sh
 ```

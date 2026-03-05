@@ -8,8 +8,7 @@ Recommended entrypoint:
 python -m processing.construct_benchmark ...
 ```
 
-It runs build + postprocess + dedup + monitoring in one command.
-Stage-2 postprocessing consumes Stage-1 split `documents.jsonl` (full split docs), not candidate-only files.
+It runs one unified pipeline with multiple processing stages (build, quality filtering, dedup, final sampling/split) plus monitoring.
 
 ## CLI
 
@@ -19,9 +18,8 @@ Run the module from the repo parent, or set `PYTHONPATH` to the repo parent so
 ```
 python -m processing.construct_benchmark \
   --manifest processing/datasets_manifest.json \
-  --stage1-output-dir processing/outputs/stage1_example \
-  --output-dir processing/outputs/stage2_example \
-  --report-path processing/outputs/monitoring/pipeline_dynamics_example.json \
+  --output-dir processing/outputs/pipeline_example \
+  --report-path processing/outputs/pipeline_example/pipeline_dynamics.json \
   --overwrite-report \
   --total-docs 100000 \
   --allow-other-languages \
@@ -36,13 +34,12 @@ python -m processing.construct_benchmark \
 
 Key flags:
 - `--manifest`: JSON manifest describing where each raw dataset lives and which fields contain text/author/lang/genre.
-- `--stage1-output-dir`: stage-1 build outputs.
-- `--reuse-stage1-output`: skip stage-1 rebuild and run stage-2 on existing stage-1 outputs.
-- `--output-dir`: final stage-2 outputs.
+- `--output-dir`: unified pipeline output directory.
+- `--work-dir`: optional persistent intermediate-work directory (otherwise temporary and auto-cleaned).
 - `--report-path`: unified monitoring report path.
 - `--sanity-check` + `--sanity-limit`: cap records per dataset for quick validation.
-- `--total-docs`: stage-1 global target size (defaults to 100k).
-- `--post-target-total`: stage-2 final target after filtering/dedup.
+- `--total-docs`: global target size for the build stage (defaults to 100k).
+- `--post-target-total`: final target after quality filtering/dedup.
 - `--train-ratio/--dev-ratio/--test-ratio`: split ratios (default 0.8/0.1/0.1).
 - `--allow-other-languages`: fill leftover budget with non-target languages.
 - `--max-chunk-tokens` / `--target-chunk-tokens` / `--min-chunk-tokens`: chunking controls.
@@ -56,9 +53,9 @@ Outputs per split (`train|dev|test`):
 - `queries.jsonl`: one query per eligible author in the split (no `author_id` field).
 - `ground_truth.jsonl`: `query_id` → positive candidate ids + `author_id`.
 - Logs and summaries:
-  - stage1: `processing_summary.json`, `sampling_shortfall.json`
-  - stage2: `postprocessing_summary.json`, `postprocess_dirty.log` (if drops exist)
-  - pipeline report: `pipeline_dynamics*.json`
+  - pipeline summary: `pipeline_summary.json`
+  - quality drops: `quality_filter_drops.log` (if drops exist)
+  - monitoring report: `pipeline_dynamics*.json`
 
 ## Dataset manifest
 

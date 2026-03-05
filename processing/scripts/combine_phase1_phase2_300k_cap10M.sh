@@ -6,8 +6,8 @@ cd "$ROOT_DIR"
 
 PYTHON_BIN="${PYTHON_BIN:-python3}"
 
-PHASE1_DIR="${PHASE1_DIR:-processing/outputs/official_ttl300k_cap10M_sf10k_postprocessed_balanced}"
-PHASE2_DIR="${PHASE2_DIR:-processing/second_phase_web_crawling/outputs/stage2_all4_t300k_cap10M}"
+PHASE1_DIR="${PHASE1_DIR:-processing/outputs/pipeline_phase1_official}"
+PHASE2_DIR="${PHASE2_DIR:-processing/second_phase_web_crawling/outputs/pipeline_all4_t300k_cap10M}"
 OUTPUT_DIR="${OUTPUT_DIR:-processing/outputs/combined_phase1_phase2_300k_cap10M}"
 REPORT_PATH="${REPORT_PATH:-${OUTPUT_DIR}/merge_summary.json}"
 

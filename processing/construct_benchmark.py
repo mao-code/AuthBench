@@ -4,6 +4,7 @@ import argparse
 import json
 import logging
 import random
+import tempfile
 import time
 from collections import Counter
 from datetime import datetime, timezone
@@ -98,7 +99,7 @@ def _postprocess_namespace(args: argparse.Namespace) -> SimpleNamespace:
 
 
 def run(args: argparse.Namespace) -> dict:
-    if not args.reuse_stage1_output and not args.manifest.exists():
+    if not args.manifest.exists():
         raise FileNotFoundError(f"Manifest not found: {args.manifest}")
 
     split_ratios = make_split_ratios(args.train_ratio, args.dev_ratio, args.test_ratio)
@@ -108,9 +109,9 @@ def run(args: argparse.Namespace) -> dict:
         args.post_test_ratio if args.post_test_ratio is not None else args.test_ratio,
     )
 
-    stage1_dir = args.stage1_output_dir
-    final_dir = args.output_dir
-    report_path = args.report_path
+    output_dir = args.output_dir
+    output_dir.mkdir(parents=True, exist_ok=True)
+    report_path = args.report_path or (output_dir / "pipeline_dynamics.json")
     if report_path.exists() and not args.overwrite_report:
         raise FileExistsError(
             f"Report already exists: {report_path}. Pass --overwrite-report to replace it."
@@ -127,22 +128,26 @@ def run(args: argparse.Namespace) -> dict:
 
     overall_start = time.perf_counter()
     rng = random.Random(args.seed)
-
-    stage1_summary_path = stage1_dir / "processing_summary.json"
-    stage1_sampling_shortfall_path = stage1_dir / "sampling_shortfall.json"
-    build_summary: dict = {}
-    build_sampling_shortfall: list = []
-    build_runtime = 0.0
-    stage1_mode = "reused" if args.reuse_stage1_output else "built"
-
-    if args.reuse_stage1_output:
-        logger.info("Stage 1/3: reusing existing stage-1 outputs at %s", stage1_dir)
+    temp_work_dir: tempfile.TemporaryDirectory[str] | None = None
+    if args.work_dir is None:
+        temp_work_dir = tempfile.TemporaryDirectory(
+            prefix=f".pipeline_work_{output_dir.name}_",
+            dir=str(output_dir.parent),
+        )
+        work_dir = Path(temp_work_dir.name)
     else:
+        work_dir = args.work_dir
+        work_dir.mkdir(parents=True, exist_ok=True)
+
+    build_dir = work_dir / "build_artifacts"
+    build_dir.mkdir(parents=True, exist_ok=True)
+
+    try:
         build_start = time.perf_counter()
-        logger.info("Stage 1/3: build stage-1 corpus -> %s", stage1_dir)
+        logger.info("Stage 1/4: build corpus -> %s", build_dir)
         build_benchmark.run(
             manifest_path=args.manifest,
-            output_dir=stage1_dir,
+            output_dir=build_dir,
             total_docs=args.total_docs,
             split_ratios=split_ratios,
             seed=args.seed,
@@ -158,173 +163,188 @@ def run(args: argparse.Namespace) -> dict:
         )
         build_runtime = round(time.perf_counter() - build_start, 3)
 
-    build_summary = _load_json(stage1_summary_path, default={})
-    build_sampling_shortfall = _load_json(stage1_sampling_shortfall_path, default=[])
+        build_summary_path = build_dir / "processing_summary.json"
+        build_sampling_shortfall_path = build_dir / "sampling_shortfall.json"
+        build_summary = _load_json(build_summary_path, default={})
+        build_sampling_shortfall = _load_json(build_sampling_shortfall_path, default=[])
 
-    stage1_docs = _read_stage_documents(stage1_dir)
-    if not stage1_docs:
-        raise RuntimeError(f"No stage-1 docs found under {stage1_dir}.")
-    logger.info("Loaded %d stage-1 docs for stage-2 processing.", len(stage1_docs))
+        build_docs = _read_stage_documents(build_dir)
+        if not build_docs:
+            raise RuntimeError(f"No build-stage docs found under {build_dir}.")
+        logger.info("Loaded %d docs from build stage.", len(build_docs))
 
-    post_start = time.perf_counter()
-    logger.info("Stage 2/3: postprocess filtering + dedup + final sampling -> %s", final_dir)
-    post_args = _postprocess_namespace(args)
-    filtered_docs, drop_reasons, drop_by_lang, drop_records = filter_documents(stage1_docs, post_args)
-    if not filtered_docs:
-        raise RuntimeError("No documents remain after postprocess filtering.")
+        finalize_start = time.perf_counter()
+        logger.info("Stage 2/4: quality filtering")
+        post_args = _postprocess_namespace(args)
+        filtered_docs, drop_reasons, drop_by_lang, drop_records = filter_documents(build_docs, post_args)
+        if not filtered_docs:
+            raise RuntimeError("No documents remain after quality filtering.")
 
-    dedup_summary: dict
-    dedup_docs = filtered_docs
-    if args.disable_dedup:
-        dedup_summary = {
-            "skipped": True,
-            "reason": "Deduplication disabled by --disable-dedup.",
-            "input_docs": len(filtered_docs),
-            "after_author_dedup": len(filtered_docs),
-            "dropped_total": 0,
+        logger.info("Stage 3/4: deduplication")
+        dedup_summary: dict
+        dedup_docs = filtered_docs
+        if args.disable_dedup:
+            dedup_summary = {
+                "skipped": True,
+                "reason": "Deduplication disabled by --disable-dedup.",
+                "input_docs": len(filtered_docs),
+                "after_author_dedup": len(filtered_docs),
+                "dropped_total": 0,
+            }
+        else:
+            dedup_cfg = DedupConfig(
+                exact_text=not args.dedup_disable_exact_text,
+                near_text=not args.dedup_disable_near_text,
+                near_similarity_threshold=args.dedup_near_similarity_threshold,
+                near_lsh_bands=args.dedup_lsh_bands,
+                min_tokens_for_near=args.dedup_min_tokens_for_near,
+                near_same_language_only=not args.dedup_allow_cross_language_near,
+                author_similarity=not args.dedup_disable_author_similarity,
+                author_similarity_threshold=args.dedup_author_similarity_threshold,
+                author_cross_source_only=not args.dedup_allow_same_source_author_similarity,
+                author_same_language_only=not args.dedup_allow_cross_language_author_similarity,
+                author_profile_docs=args.dedup_author_profile_docs,
+                max_bucket_size=args.dedup_max_bucket_size,
+            )
+            dedup_docs, dedup_summary = deduplicate_documents(filtered_docs, config=dedup_cfg)
+            if not dedup_docs:
+                raise RuntimeError("No documents remain after deduplication.")
+
+        logger.info("Stage 4/4: final sampling + split writing -> %s", output_dir)
+        target_total = args.post_target_total or len(dedup_docs)
+        docs_by_lang: dict[str, list[ProcessedDocument]] = {}
+        for doc in dedup_docs:
+            docs_by_lang.setdefault(doc.lang, []).append(doc)
+        lang_targets, lang_log = compute_language_targets(docs_by_lang, target_total)
+        selected_docs, sampling_log = sample_documents(dedup_docs, lang_targets, rng)
+        splits = split_by_language(selected_docs, post_split_ratios, rng)
+        split_summary = write_outputs(splits, output_dir, rng)
+
+        quality_drop_log = output_dir / "quality_filter_drops.log"
+        if drop_records:
+            write_jsonl(quality_drop_log, drop_records)
+            logger.info("Wrote quality-filter drop log to %s (%d rows)", quality_drop_log, len(drop_records))
+
+        finalize_summary = {
+            "input_docs": _summarize_docs(build_docs),
+            "after_filter": _summarize_docs(filtered_docs),
+            "after_dedup": _summarize_docs(dedup_docs),
+            "after_sampling": _summarize_docs(selected_docs),
+            "drop_reasons": dict(drop_reasons),
+            "drop_reasons_by_lang": dict(drop_by_lang),
+            "quality_drop_log_path": str(quality_drop_log) if drop_records else None,
+            "quality_drop_log_count": len(drop_records),
+            "language_targets": lang_log,
+            "sampling_deficits": sampling_log,
+            "deduplication": dedup_summary,
+            "splits": _to_plain_jsonable(split_summary),
+            "runtime_seconds": round(time.perf_counter() - finalize_start, 3),
         }
-    else:
-        dedup_cfg = DedupConfig(
-            exact_text=not args.dedup_disable_exact_text,
-            near_text=not args.dedup_disable_near_text,
-            near_similarity_threshold=args.dedup_near_similarity_threshold,
-            near_lsh_bands=args.dedup_lsh_bands,
-            min_tokens_for_near=args.dedup_min_tokens_for_near,
-            near_same_language_only=not args.dedup_allow_cross_language_near,
-            author_similarity=not args.dedup_disable_author_similarity,
-            author_similarity_threshold=args.dedup_author_similarity_threshold,
-            author_cross_source_only=not args.dedup_allow_same_source_author_similarity,
-            author_same_language_only=not args.dedup_allow_cross_language_author_similarity,
-            author_profile_docs=args.dedup_author_profile_docs,
-            max_bucket_size=args.dedup_max_bucket_size,
-        )
-        dedup_docs, dedup_summary = deduplicate_documents(filtered_docs, config=dedup_cfg)
-        if not dedup_docs:
-            raise RuntimeError("No documents remain after deduplication.")
 
-    target_total = args.post_target_total or len(dedup_docs)
-    docs_by_lang: dict[str, list[ProcessedDocument]] = {}
-    for doc in dedup_docs:
-        docs_by_lang.setdefault(doc.lang, []).append(doc)
-    lang_targets, lang_log = compute_language_targets(docs_by_lang, target_total)
-    selected_docs, sampling_log = sample_documents(dedup_docs, lang_targets, rng)
-    splits = split_by_language(selected_docs, post_split_ratios, rng)
-    split_summary = write_outputs(splits, final_dir, rng)
-
-    dirty_log_path = final_dir / "postprocess_dirty.log"
-    if drop_records:
-        write_jsonl(dirty_log_path, drop_records)
-        logger.info("Wrote postprocess drop log to %s (%d rows)", dirty_log_path, len(drop_records))
-
-    post_summary = {
-        "input_dir": str(stage1_dir),
-        "output_dir": str(final_dir),
-        "before_filter": _summarize_docs(stage1_docs),
-        "after_filter": _summarize_docs(filtered_docs),
-        "after_dedup": _summarize_docs(dedup_docs),
-        "after_sampling": _summarize_docs(selected_docs),
-        "drop_reasons": dict(drop_reasons),
-        "drop_reasons_by_lang": dict(drop_by_lang),
-        "dirty_log_path": str(dirty_log_path) if drop_records else None,
-        "dirty_log_count": len(drop_records),
-        "language_targets": lang_log,
-        "sampling_deficits": sampling_log,
-        "deduplication": dedup_summary,
-        "splits": _to_plain_jsonable(split_summary),
-        "runtime_seconds": round(time.perf_counter() - post_start, 3),
-    }
-    (final_dir / "postprocessing_summary.json").write_text(
-        json.dumps(_to_plain_jsonable(post_summary), indent=2, ensure_ascii=False),
-        encoding="utf-8",
-    )
-
-    logger.info("Stage 3/3: writing unified monitoring report -> %s", report_path)
-    report = {
-        "generated_at_utc": datetime.now(timezone.utc).isoformat(),
-        "seed": args.seed,
-        "report_runtime_seconds": round(time.perf_counter() - overall_start, 3),
-        "pipeline_inputs": {
-            "manifest": str(args.manifest),
-            "stage1_output_dir": str(stage1_dir),
-            "final_output_dir": str(final_dir),
-            "total_docs": args.total_docs,
-            "post_target_total": args.post_target_total,
-            "train_ratio": args.train_ratio,
-            "dev_ratio": args.dev_ratio,
-            "test_ratio": args.test_ratio,
-            "post_train_ratio": args.post_train_ratio,
-            "post_dev_ratio": args.post_dev_ratio,
-            "post_test_ratio": args.post_test_ratio,
-            "allow_other_languages": args.allow_other_languages,
-            "max_documents_per_dataset": args.max_documents_per_dataset,
-            "dataset_max_docs": dict(sorted(dataset_max_docs.items())),
-            "shuffle_buffer_size": args.shuffle_buffer_size,
-            "no_shuffle_datasets": sorted(no_shuffle_datasets),
-            "chunking": chunking_params,
-            "truncate_to_tokens": args.truncate_to_tokens,
-            "post_filtering": {
-                "spacing_collapse_ratio": args.post_spacing_collapse_ratio,
-                "min_spacing_run": args.post_min_spacing_run,
-                "max_single_letter_ratio": args.post_max_single_letter_ratio,
-                "max_single_letter_run": args.post_max_single_letter_run,
-                "min_alpha_ratio": args.post_min_alpha_ratio,
-                "min_alpha_token_ratio": args.post_min_alpha_token_ratio,
-                "skip_langdetect": args.post_skip_langdetect,
+        pipeline_summary = {
+            "generated_at_utc": datetime.now(timezone.utc).isoformat(),
+            "output_dir": str(output_dir),
+            "build": {
+                "runtime_seconds": build_runtime,
+                "summary": build_summary,
+                "sampling_shortfall": build_sampling_shortfall,
             },
-        },
-        "build_stage": {
-            "mode": stage1_mode,
-            "runtime_seconds": build_runtime,
-            "summary_path": str(stage1_summary_path),
-            "sampling_shortfall_path": str(stage1_sampling_shortfall_path),
-            "summary": build_summary,
-            "sampling_shortfall": build_sampling_shortfall,
-            "stage1_documents_loaded_for_stage2": _summarize_docs(stage1_docs),
-            "stage1_candidates_loaded_for_postprocess": _summarize_docs(stage1_docs),
-        },
-        "postprocess_dedup_stage": _to_plain_jsonable(post_summary),
-        "stage_transitions": {
-            "build_after_sampling_total": build_summary.get("after_sampling", {}).get("total"),
-            "post_before_filter_total": post_summary["before_filter"]["total"],
-            "post_after_filter_total": post_summary["after_filter"]["total"],
-            "post_after_dedup_total": post_summary["after_dedup"]["total"],
-            "post_after_sampling_total": post_summary["after_sampling"]["total"],
-        },
-    }
+            "finalize": _to_plain_jsonable(finalize_summary),
+        }
+        (output_dir / "pipeline_summary.json").write_text(
+            json.dumps(_to_plain_jsonable(pipeline_summary), indent=2, ensure_ascii=False),
+            encoding="utf-8",
+        )
 
-    report_path.parent.mkdir(parents=True, exist_ok=True)
-    report_path.write_text(
-        json.dumps(_to_plain_jsonable(report), indent=2, ensure_ascii=False),
-        encoding="utf-8",
-    )
-    logger.info("Unified pipeline complete. Final outputs at %s", final_dir.resolve())
-    return report
+        logger.info("Writing monitoring dynamics -> %s", report_path)
+        report = {
+            "generated_at_utc": datetime.now(timezone.utc).isoformat(),
+            "seed": args.seed,
+            "report_runtime_seconds": round(time.perf_counter() - overall_start, 3),
+            "pipeline_inputs": {
+                "manifest": str(args.manifest),
+                "output_dir": str(output_dir),
+                "work_dir": str(args.work_dir) if args.work_dir else None,
+                "total_docs": args.total_docs,
+                "post_target_total": args.post_target_total,
+                "train_ratio": args.train_ratio,
+                "dev_ratio": args.dev_ratio,
+                "test_ratio": args.test_ratio,
+                "post_train_ratio": args.post_train_ratio,
+                "post_dev_ratio": args.post_dev_ratio,
+                "post_test_ratio": args.post_test_ratio,
+                "allow_other_languages": args.allow_other_languages,
+                "max_documents_per_dataset": args.max_documents_per_dataset,
+                "dataset_max_docs": dict(sorted(dataset_max_docs.items())),
+                "shuffle_buffer_size": args.shuffle_buffer_size,
+                "no_shuffle_datasets": sorted(no_shuffle_datasets),
+                "chunking": chunking_params,
+                "truncate_to_tokens": args.truncate_to_tokens,
+                "quality_filtering": {
+                    "spacing_collapse_ratio": args.post_spacing_collapse_ratio,
+                    "min_spacing_run": args.post_min_spacing_run,
+                    "max_single_letter_ratio": args.post_max_single_letter_ratio,
+                    "max_single_letter_run": args.post_max_single_letter_run,
+                    "min_alpha_ratio": args.post_min_alpha_ratio,
+                    "min_alpha_token_ratio": args.post_min_alpha_token_ratio,
+                    "skip_langdetect": args.post_skip_langdetect,
+                },
+            },
+            "stages": {
+                "build": {
+                    "runtime_seconds": build_runtime,
+                    "summary": build_summary,
+                    "sampling_shortfall": build_sampling_shortfall,
+                    "documents_for_finalize": _summarize_docs(build_docs),
+                },
+                "quality_dedup_sampling": _to_plain_jsonable(finalize_summary),
+            },
+            "stage_transitions": {
+                "build_after_sampling_total": build_summary.get("after_sampling", {}).get("total"),
+                "quality_input_total": finalize_summary["input_docs"]["total"],
+                "quality_after_filter_total": finalize_summary["after_filter"]["total"],
+                "after_dedup_total": finalize_summary["after_dedup"]["total"],
+                "final_after_sampling_total": finalize_summary["after_sampling"]["total"],
+            },
+        }
+
+        report_path.parent.mkdir(parents=True, exist_ok=True)
+        report_path.write_text(
+            json.dumps(_to_plain_jsonable(report), indent=2, ensure_ascii=False),
+            encoding="utf-8",
+        )
+        logger.info("Unified pipeline complete. Final outputs at %s", output_dir.resolve())
+        return report
+    finally:
+        if temp_work_dir is not None:
+            temp_work_dir.cleanup()
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
-            "Unified AuthBench construction pipeline: build + postprocess + dedup + "
+            "Unified AuthBench construction pipeline: build + quality filter + dedup + "
             "monitoring report in one run."
         )
     )
     parser.add_argument("--manifest", type=Path, default=default_manifest_path())
-    parser.add_argument("--stage1-output-dir", type=Path, default=Path("processing/outputs/stage1"))
-    parser.add_argument("--output-dir", type=Path, default=Path("processing/outputs/stage2"))
+    parser.add_argument("--output-dir", type=Path, default=Path("processing/outputs/pipeline"))
+    parser.add_argument(
+        "--work-dir",
+        type=Path,
+        default=None,
+        help=(
+            "Optional persistent working directory for intermediate build artifacts. "
+            "If unset, a temporary directory is used and cleaned up automatically."
+        ),
+    )
     parser.add_argument(
         "--report-path",
         type=Path,
-        default=Path("processing/outputs/monitoring/pipeline_dynamics.json"),
+        default=None,
+        help="Monitoring report path (default: <output-dir>/pipeline_dynamics.json).",
     )
     parser.add_argument("--overwrite-report", action="store_true")
-    parser.add_argument(
-        "--reuse-stage1-output",
-        action="store_true",
-        help=(
-            "Skip rebuilding stage-1 and run stage-2 using existing files under "
-            "--stage1-output-dir (prefers documents.jsonl, with legacy fallback)."
-        ),
-    )
 
     parser.add_argument("--total-docs", type=int, default=TARGET_TOTAL_DOCS)
     parser.add_argument("--seed", type=int, default=42)
