@@ -9,6 +9,7 @@ python -m processing.construct_benchmark ...
 ```
 
 It runs build + postprocess + dedup + monitoring in one command.
+Stage-2 postprocessing consumes Stage-1 split `documents.jsonl` (full split docs), not candidate-only files.
 
 ## CLI
 
@@ -36,6 +37,7 @@ python -m processing.construct_benchmark \
 Key flags:
 - `--manifest`: JSON manifest describing where each raw dataset lives and which fields contain text/author/lang/genre.
 - `--stage1-output-dir`: stage-1 build outputs.
+- `--reuse-stage1-output`: skip stage-1 rebuild and run stage-2 on existing stage-1 outputs.
 - `--output-dir`: final stage-2 outputs.
 - `--report-path`: unified monitoring report path.
 - `--sanity-check` + `--sanity-limit`: cap records per dataset for quick validation.
@@ -49,6 +51,7 @@ Key flags:
 - `--dedup-*`: controls exact/near-text and author-similarity dedup behavior.
 
 Outputs per split (`train|dev|test`):
+- `documents.jsonl`: full split documents with `doc_id`, `author_id`, `lang`, `genre`, `content`, `source`, `token_length`.
 - `candidates.jsonl`: full documents with `candidate_id`, `author_id`, `lang`, `genre`, `content`, `source`, `token_length`.
 - `queries.jsonl`: one query per eligible author in the split (no `author_id` field).
 - `ground_truth.jsonl`: `query_id` → positive candidate ids + `author_id`.

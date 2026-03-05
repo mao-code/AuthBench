@@ -327,13 +327,29 @@ def run(
 
     for split_name, docs in splits.items():
         split_path = output_dir / split_name
+        document_rows = [
+            {
+                "doc_id": doc.doc_id,
+                "raw_id": doc.raw_id,
+                "author_id": doc.author_id,
+                "lang": doc.lang,
+                "genre": doc.genre,
+                "content": doc.text,
+                "source": doc.source,
+                "token_length": doc.token_length,
+                "length_bucket": doc.length_bucket,
+            }
+            for doc in docs
+        ]
         candidates, queries, ground_truth = build_retrieval_sets(docs, rng)
+        write_jsonl(split_path / "documents.jsonl", document_rows)
         write_jsonl(split_path / "candidates.jsonl", candidates)
         write_jsonl(split_path / "queries.jsonl", queries)
         write_jsonl(split_path / "ground_truth.jsonl", ground_truth)
         logger.info(
-            "[%s] candidates=%d queries=%d",
+            "[%s] docs=%d candidates=%d queries=%d",
             split_name,
+            len(docs),
             len(candidates),
             len(queries),
         )

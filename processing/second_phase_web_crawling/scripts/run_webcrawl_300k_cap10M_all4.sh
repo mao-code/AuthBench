@@ -81,6 +81,7 @@ SKIP_YTCOMMENTS="${SKIP_YTCOMMENTS:-0}"
 YT_ONLY="${YT_ONLY:-0}"
 
 AUTO_RAMP="${AUTO_RAMP:-1}"
+REUSE_STAGE1_OUTPUT="${REUSE_STAGE1_OUTPUT:-0}"
 RAMP_MAX_ROUNDS="${RAMP_MAX_ROUNDS:-8}"
 RAMP_FACTOR="${RAMP_FACTOR:-2}"
 STACKEXCHANGE_API_SAFE_MODE="${STACKEXCHANGE_API_SAFE_MODE:-1}"
@@ -304,6 +305,9 @@ while true; do
   if [[ "$SKIP_YTCOMMENTS" == "1" ]]; then
     CMD+=(--skip-ytcomments)
   fi
+  if [[ "$REUSE_STAGE1_OUTPUT" == "1" ]]; then
+    CMD+=(--reuse-stage1-output)
+  fi
 
   "${CMD[@]}"
 
@@ -370,7 +374,7 @@ fi
 if [[ -f "$POSTPROCESS_OUTPUT_DIR/postprocessing_summary.json" ]]; then
   echo ""
   echo "Stage2 postprocessing summary:"
-  jq '{before_filter: .before_filter.total, after_filter: .after_filter.total, after_dedup: .after_dedup.total, after_sampling: .after_sampling.total, split_candidates: {train: .splits.train.candidates, dev: .splits.dev.candidates, test: .splits.test.candidates}}' "$POSTPROCESS_OUTPUT_DIR/postprocessing_summary.json"
+  jq '{before_filter: .before_filter.total, after_filter: .after_filter.total, after_dedup: .after_dedup.total, after_sampling: .after_sampling.total, split_documents: {train: .splits.train.documents, dev: .splits.dev.documents, test: .splits.test.documents}, split_candidates: {train: .splits.train.candidates, dev: .splits.dev.candidates, test: .splits.test.candidates}}' "$POSTPROCESS_OUTPUT_DIR/postprocessing_summary.json"
 fi
 
 echo "[3/3] Done"

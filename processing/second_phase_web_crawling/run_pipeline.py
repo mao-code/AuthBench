@@ -147,6 +147,14 @@ def parse_args() -> argparse.Namespace:
         default=Path("processing/second_phase_web_crawling/outputs/monitoring/pipeline_dynamics.json"),
     )
     parser.add_argument("--monitor-overwrite", action="store_true")
+    parser.add_argument(
+        "--reuse-stage1-output",
+        action="store_true",
+        help=(
+            "Skip stage-1 build in unified constructor and reuse existing "
+            "--build-output-dir data for stage-2."
+        ),
+    )
 
     parser.add_argument("--total-docs", type=int, default=100000)
     parser.add_argument("--seed", type=int, default=42)
@@ -339,6 +347,8 @@ def run_construct_stage(args: argparse.Namespace) -> None:
         cmd.append("--allow-other-languages")
     if args.monitor_overwrite:
         cmd.append("--overwrite-report")
+    if args.reuse_stage1_output:
+        cmd.append("--reuse-stage1-output")
     if args.max_documents_per_dataset is not None:
         cmd.extend(["--max-documents-per-dataset", str(args.max_documents_per_dataset)])
     if args.dataset_max_docs:
@@ -370,7 +380,7 @@ def main() -> None:
     )
 
     stages = set(args.stages)
-    if "crawl" not in stages and not args.manifest_path.exists():
+    if "crawl" not in stages and not args.reuse_stage1_output and not args.manifest_path.exists():
         raise FileNotFoundError(
             f"Manifest not found at {args.manifest_path}. Run stage 'crawl' first or provide a manifest."
         )
@@ -380,6 +390,11 @@ def main() -> None:
 
     construct_aliases = {"construct", "monitor", "build", "postprocess"}
     if stages & construct_aliases:
+        if args.reuse_stage1_output and "crawl" in stages:
+            logger.warning(
+                "--reuse-stage1-output is set while running crawl+construct; "
+                "construct stage will reuse existing stage-1 outputs."
+            )
         if "construct" not in stages:
             logger.info(
                 "Legacy stage alias detected (%s); running unified construct stage.",

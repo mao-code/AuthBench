@@ -15,7 +15,7 @@ from . import build_benchmark
 from .config import CHUNKING_DEFAULTS, TARGET_TOTAL_DOCS, default_manifest_path, make_split_ratios
 from .deduplication import DedupConfig, deduplicate_documents
 from .postprocess import (
-    _read_candidates,
+    _read_stage_documents,
     compute_language_targets,
     filter_documents,
     sample_documents,
@@ -98,7 +98,7 @@ def _postprocess_namespace(args: argparse.Namespace) -> SimpleNamespace:
 
 
 def run(args: argparse.Namespace) -> dict:
-    if not args.manifest.exists():
+    if not args.reuse_stage1_output and not args.manifest.exists():
         raise FileNotFoundError(f"Manifest not found: {args.manifest}")
 
     split_ratios = make_split_ratios(args.train_ratio, args.dev_ratio, args.test_ratio)
@@ -128,33 +128,43 @@ def run(args: argparse.Namespace) -> dict:
     overall_start = time.perf_counter()
     rng = random.Random(args.seed)
 
-    build_start = time.perf_counter()
-    logger.info("Stage 1/3: build benchmark candidates -> %s", stage1_dir)
-    build_benchmark.run(
-        manifest_path=args.manifest,
-        output_dir=stage1_dir,
-        total_docs=args.total_docs,
-        split_ratios=split_ratios,
-        seed=args.seed,
-        sanity_check=args.sanity_check,
-        sanity_limit=args.sanity_limit,
-        max_documents_per_dataset=args.max_documents_per_dataset,
-        shuffle_buffer_size=args.shuffle_buffer_size,
-        no_shuffle_datasets=no_shuffle_datasets,
-        dataset_max_docs=dataset_max_docs,
-        allow_other_languages=args.allow_other_languages,
-        chunking_params=chunking_params,
-        truncate_to_tokens=args.truncate_to_tokens,
-    )
-    build_runtime = round(time.perf_counter() - build_start, 3)
-
     stage1_summary_path = stage1_dir / "processing_summary.json"
     stage1_sampling_shortfall_path = stage1_dir / "sampling_shortfall.json"
+    build_summary: dict = {}
+    build_sampling_shortfall: list = []
+    build_runtime = 0.0
+    stage1_mode = "reused" if args.reuse_stage1_output else "built"
+
+    if args.reuse_stage1_output:
+        logger.info("Stage 1/3: reusing existing stage-1 outputs at %s", stage1_dir)
+    else:
+        build_start = time.perf_counter()
+        logger.info("Stage 1/3: build stage-1 corpus -> %s", stage1_dir)
+        build_benchmark.run(
+            manifest_path=args.manifest,
+            output_dir=stage1_dir,
+            total_docs=args.total_docs,
+            split_ratios=split_ratios,
+            seed=args.seed,
+            sanity_check=args.sanity_check,
+            sanity_limit=args.sanity_limit,
+            max_documents_per_dataset=args.max_documents_per_dataset,
+            shuffle_buffer_size=args.shuffle_buffer_size,
+            no_shuffle_datasets=no_shuffle_datasets,
+            dataset_max_docs=dataset_max_docs,
+            allow_other_languages=args.allow_other_languages,
+            chunking_params=chunking_params,
+            truncate_to_tokens=args.truncate_to_tokens,
+        )
+        build_runtime = round(time.perf_counter() - build_start, 3)
+
     build_summary = _load_json(stage1_summary_path, default={})
     build_sampling_shortfall = _load_json(stage1_sampling_shortfall_path, default=[])
 
-    stage1_docs = _read_candidates(stage1_dir)
-    logger.info("Loaded %d stage-1 candidate docs for stage-2 processing.", len(stage1_docs))
+    stage1_docs = _read_stage_documents(stage1_dir)
+    if not stage1_docs:
+        raise RuntimeError(f"No stage-1 docs found under {stage1_dir}.")
+    logger.info("Loaded %d stage-1 docs for stage-2 processing.", len(stage1_docs))
 
     post_start = time.perf_counter()
     logger.info("Stage 2/3: postprocess filtering + dedup + final sampling -> %s", final_dir)
@@ -263,11 +273,13 @@ def run(args: argparse.Namespace) -> dict:
             },
         },
         "build_stage": {
+            "mode": stage1_mode,
             "runtime_seconds": build_runtime,
             "summary_path": str(stage1_summary_path),
             "sampling_shortfall_path": str(stage1_sampling_shortfall_path),
             "summary": build_summary,
             "sampling_shortfall": build_sampling_shortfall,
+            "stage1_documents_loaded_for_stage2": _summarize_docs(stage1_docs),
             "stage1_candidates_loaded_for_postprocess": _summarize_docs(stage1_docs),
         },
         "postprocess_dedup_stage": _to_plain_jsonable(post_summary),
@@ -305,6 +317,14 @@ def parse_args() -> argparse.Namespace:
         default=Path("processing/outputs/monitoring/pipeline_dynamics.json"),
     )
     parser.add_argument("--overwrite-report", action="store_true")
+    parser.add_argument(
+        "--reuse-stage1-output",
+        action="store_true",
+        help=(
+            "Skip rebuilding stage-1 and run stage-2 using existing files under "
+            "--stage1-output-dir (prefers documents.jsonl, with legacy fallback)."
+        ),
+    )
 
     parser.add_argument("--total-docs", type=int, default=TARGET_TOTAL_DOCS)
     parser.add_argument("--seed", type=int, default=42)

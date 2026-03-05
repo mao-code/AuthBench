@@ -15,7 +15,7 @@ from typing import Iterable
 
 from .config import make_split_ratios
 from .deduplication import DedupConfig, deduplicate_documents
-from .postprocess import _read_candidates, compute_language_targets, sample_documents
+from .postprocess import _read_stage_documents, compute_language_targets, sample_documents
 from .sampling import assign_document_ids, build_retrieval_sets, split_by_language
 from .types import ProcessedDocument
 from .utils import write_jsonl
@@ -118,10 +118,10 @@ def run(args: argparse.Namespace) -> dict:
     rng = random.Random(args.seed)
     start_time = time.perf_counter()
 
-    logger.info("Loading phase-1 candidates from %s", args.phase1_dir)
-    phase1_docs = _read_candidates(args.phase1_dir)
-    logger.info("Loading phase-2 candidates from %s", args.phase2_dir)
-    phase2_docs = _read_candidates(args.phase2_dir)
+    logger.info("Loading phase-1 stage docs from %s", args.phase1_dir)
+    phase1_docs = _read_stage_documents(args.phase1_dir)
+    logger.info("Loading phase-2 stage docs from %s", args.phase2_dir)
+    phase2_docs = _read_stage_documents(args.phase2_dir)
     phase1_loaded_count = len(phase1_docs)
     phase2_loaded_count = len(phase2_docs)
 

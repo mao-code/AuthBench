@@ -196,34 +196,160 @@ def looks_untranslatable(
     return False
 
 
-def _read_candidates(base_dir: Path) -> list[ProcessedDocument]:
+def _resolve_doc_id(row: dict) -> str | None:
+    for key in ("doc_id", "candidate_id", "query_id"):
+        value = row.get(key)
+        if value:
+            return str(value)
+    return None
+
+
+def _row_to_processed_doc(
+    row: dict,
+    *,
+    split: str,
+    fallback_author_id: str = "",
+) -> ProcessedDocument | None:
+    doc_id = _resolve_doc_id(row)
+    lang = str(row.get("lang", "") or "").strip().lower()
+    if not lang:
+        logger.debug("Skipping row with missing lang in %s: %s", split, doc_id)
+        return None
+
+    author_id = str(row.get("author_id", "") or fallback_author_id or "").strip()
+    if not author_id:
+        logger.debug("Skipping row with missing author_id in %s: %s", split, doc_id)
+        return None
+
+    text = row.get("content")
+    if text is None:
+        text = row.get("text", "")
+    text = str(text or "")
+    token_len = int(row.get("token_length") or count_tokens(text))
+    genre = str(row.get("genre", "unknown") or "unknown")
+    source = str(row.get("source", "") or "")
+    raw_id = str(row.get("raw_id") or doc_id or "")
+    return ProcessedDocument(
+        raw_id=raw_id,
+        doc_id=doc_id,
+        author_id=author_id,
+        text=text,
+        lang=lang,
+        source=source,
+        genre=genre,
+        token_length=token_len,
+        length_bucket=length_bucket(token_len),
+    )
+
+
+def _read_query_author_map(ground_truth_path: Path) -> dict[str, str]:
+    if not ground_truth_path.exists():
+        return {}
+    query_to_author: dict[str, str] = {}
+    for row in read_jsonl(ground_truth_path):
+        query_id = row.get("query_id")
+        author_id = row.get("author_id")
+        if query_id and author_id:
+            query_to_author[str(query_id)] = str(author_id)
+    return query_to_author
+
+
+def _dedup_key(doc: ProcessedDocument, split: str) -> str:
+    if doc.doc_id:
+        return doc.doc_id
+    return f"{split}:{doc.lang}:{doc.source}:{doc.author_id}:{doc.raw_id}"
+
+
+def _read_stage_documents(base_dir: Path) -> list[ProcessedDocument]:
     docs: list[ProcessedDocument] = []
+    seen_keys: set[str] = set()
+    documents_files_loaded = 0
+    retrieval_fallback_splits: list[str] = []
+
     for split in ("train", "dev", "test"):
-        path = base_dir / split / "candidates.jsonl"
-        if not path.exists():
-            logger.warning("Skipping missing split %s at %s", split, path)
+        split_dir = base_dir / split
+        documents_path = split_dir / "documents.jsonl"
+        if documents_path.exists():
+            documents_files_loaded += 1
+            for row in read_jsonl(documents_path):
+                doc = _row_to_processed_doc(row, split=split)
+                if doc is None:
+                    continue
+                key = _dedup_key(doc, split)
+                if key in seen_keys:
+                    continue
+                seen_keys.add(key)
+                docs.append(doc)
             continue
-        for row in read_jsonl(path):
-            doc_id = row.get("candidate_id") or row.get("doc_id")
-            lang = str(row.get("lang", "") or "").strip().lower()
-            token_len = int(row.get("token_length") or count_tokens(row.get("content", "")))
-            if not lang:
-                logger.debug("Skipping doc with missing lang in %s: %s", split, doc_id)
-                continue
-            docs.append(
-                ProcessedDocument(
-                    raw_id=doc_id or "",
-                    doc_id=doc_id,
-                    author_id=row.get("author_id", ""),
-                    text=row.get("content", ""),
-                    lang=lang,
-                    source=row.get("source", ""),
-                    genre=row.get("genre", "unknown"),
-                    token_length=token_len,
-                    length_bucket=length_bucket(token_len),
-                )
+
+        retrieval_fallback_splits.append(split)
+        candidates_path = split_dir / "candidates.jsonl"
+        if candidates_path.exists():
+            for row in read_jsonl(candidates_path):
+                doc = _row_to_processed_doc(row, split=split)
+                if doc is None:
+                    continue
+                key = _dedup_key(doc, split)
+                if key in seen_keys:
+                    continue
+                seen_keys.add(key)
+                docs.append(doc)
+        else:
+            logger.warning(
+                "Missing %s and %s for split %s under %s.",
+                documents_path.name,
+                candidates_path.name,
+                split,
+                base_dir,
             )
+
+        queries_path = split_dir / "queries.jsonl"
+        if not queries_path.exists():
+            continue
+        query_to_author = _read_query_author_map(split_dir / "ground_truth.jsonl")
+        skipped_missing_author = 0
+        for row in read_jsonl(queries_path):
+            query_id = row.get("query_id")
+            author_id = query_to_author.get(str(query_id)) if query_id else ""
+            doc = _row_to_processed_doc(
+                row,
+                split=split,
+                fallback_author_id=author_id,
+            )
+            if doc is None:
+                skipped_missing_author += 1
+                continue
+            key = _dedup_key(doc, split)
+            if key in seen_keys:
+                continue
+            seen_keys.add(key)
+            docs.append(doc)
+        if skipped_missing_author:
+            logger.warning(
+                "Skipped %d query rows without author mapping in %s/%s.",
+                skipped_missing_author,
+                base_dir,
+                split,
+            )
+
+    if retrieval_fallback_splits:
+        logger.warning(
+            "Using retrieval-file fallback for splits without documents.jsonl: %s",
+            ",".join(retrieval_fallback_splits),
+        )
+    if documents_files_loaded:
+        logger.info(
+            "Loaded stage documents from documents.jsonl in %d split(s).",
+            documents_files_loaded,
+        )
     return docs
+
+
+def _read_candidates(base_dir: Path) -> list[ProcessedDocument]:
+    """
+    Backward-compatible alias used by downstream modules.
+    """
+    return _read_stage_documents(base_dir)
 
 
 def _summarize_docs(docs: Iterable[ProcessedDocument]) -> dict:
@@ -433,15 +559,32 @@ def write_outputs(
     output_dir.mkdir(parents=True, exist_ok=True)
     split_summary = {}
     for split_name, docs in splits.items():
+        document_rows = [
+            {
+                "doc_id": doc.doc_id,
+                "raw_id": doc.raw_id,
+                "author_id": doc.author_id,
+                "lang": doc.lang,
+                "genre": doc.genre,
+                "content": doc.text,
+                "source": doc.source,
+                "token_length": doc.token_length,
+                "length_bucket": doc.length_bucket,
+            }
+            for doc in docs
+        ]
         candidates, queries, ground_truth = build_retrieval_sets(docs, rng)
         split_path = output_dir / split_name
+        write_jsonl(split_path / "documents.jsonl", document_rows)
         write_jsonl(split_path / "candidates.jsonl", candidates)
         write_jsonl(split_path / "queries.jsonl", queries)
         write_jsonl(split_path / "ground_truth.jsonl", ground_truth)
         split_summary[split_name] = {
+            "documents": len(docs),
             "candidates": len(candidates),
             "queries": len(queries),
             "ground_truth": len(ground_truth),
+            "documents_by_lang": Counter(doc.lang for doc in docs),
             "candidates_by_lang": Counter(doc["lang"] for doc in candidates),
             "queries_by_lang": Counter(doc["lang"] for doc in queries),
         }
@@ -551,8 +694,8 @@ def main():
 
     output_dir = args.output_dir or Path(f"{args.input_dir}_postprocessed")
 
-    logger.info("Loading candidates from %s", args.input_dir)
-    raw_docs = _read_candidates(args.input_dir)
+    logger.info("Loading stage documents from %s", args.input_dir)
+    raw_docs = _read_stage_documents(args.input_dir)
     logger.info("Loaded %d documents across splits.", len(raw_docs))
     logger.info("Input by language: %s", dict(_summarize_docs(raw_docs)["by_lang"]))
 
@@ -596,11 +739,13 @@ def main():
     split_summary = write_outputs(splits, output_dir, rng)
     for split_name, stats in split_summary.items():
         logger.info(
-            "[%s] candidates=%d queries=%d gt=%d cand_by_lang=%s queries_by_lang=%s",
+            "[%s] docs=%d candidates=%d queries=%d gt=%d docs_by_lang=%s cand_by_lang=%s queries_by_lang=%s",
             split_name,
+            stats["documents"],
             stats["candidates"],
             stats["queries"],
             stats["ground_truth"],
+            dict(stats["documents_by_lang"]),
             dict(stats["candidates_by_lang"]),
             dict(stats["queries_by_lang"]),
         )

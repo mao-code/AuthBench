@@ -13,6 +13,8 @@ The constructor executes all stages in one run and writes:
 - final outputs (`postprocessing_summary.json`, split JSONL files)
 - one unified monitoring report (`pipeline_dynamics*.json`)
 
+You can also reuse an existing stage-1 directory with `--reuse-stage1-output`, which skips stage-1 rebuild and runs stage-2 directly on stage-1 docs.
+
 ---
 
 ## Stage 0: Inputs
@@ -40,7 +42,7 @@ Each record is normalized into:
    - keep author with 3-5 docs (fallback supports 2 docs).
 7. Language/genre/length sampling (`processing/sampling.py`) toward `--total-docs`.
 8. Stratified split (`train/dev/test`) by language.
-9. Build retrieval files (`candidates.jsonl`, `queries.jsonl`, `ground_truth.jsonl`).
+9. Write split `documents.jsonl` and retrieval files (`candidates.jsonl`, `queries.jsonl`, `ground_truth.jsonl`).
 
 Stage-1 outputs:
 - `<stage1_output_dir>/{train,dev,test}/*.jsonl`
@@ -51,7 +53,7 @@ Stage-1 outputs:
 
 ## Stage 2: Post-Filter + Dedup + Final Sampling
 
-Input: stage-1 `candidates.jsonl` from all splits.
+Input: stage-1 `documents.jsonl` from all splits (with fallback to retrieval files for legacy runs).
 
 ### 2.1 Post-filter
 
@@ -88,6 +90,7 @@ After filtering+dedup:
 
 Stage-2 outputs:
 - `<output_dir>/{train,dev,test}/*.jsonl`
+  - includes `documents.jsonl` (full split docs) plus retrieval files.
 - `<output_dir>/postprocessing_summary.json`
 - `<output_dir>/postprocess_dirty.log` (if any dropped docs)
 
@@ -117,7 +120,7 @@ python -m processing.combine_phase_benchmarks ...
 ```
 
 Flow:
-1. Load phase1 and phase2 final candidates.
+1. Load phase1 and phase2 final stage docs (prefers `documents.jsonl`, falls back to retrieval files).
 2. Optional per-phase dedup.
 3. Cross-phase exact overlap removal (phase2 priority).
 4. Enforce total target (default 1,000,000) and minimum phase2 share (default 40%).

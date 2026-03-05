@@ -75,10 +75,23 @@ python -m processing.second_phase_web_crawling.run_pipeline \
   --truncate-to-tokens 2000
 ```
 
+To rerun only stage-2 on an existing stage-1 directory:
+
+```bash
+python -m processing.second_phase_web_crawling.run_pipeline \
+  --stages construct \
+  --reuse-stage1-output \
+  --build-output-dir processing/second_phase_web_crawling/outputs/stage1_<run_tag> \
+  --postprocess-output-dir processing/second_phase_web_crawling/outputs/stage2_<new_run_tag> \
+  --monitor-overwrite
+```
+
 Outputs:
 - Monitor report: `processing/second_phase_web_crawling/outputs/monitoring/`
 - Stage-1 benchmark outputs: `processing/second_phase_web_crawling/outputs/stage1/`
 - Final postprocessed outputs: `processing/second_phase_web_crawling/outputs/stage2/`
+
+Both stage directories now include split-level `documents.jsonl` files; stage-2 filtering/dedup is applied to those full stage-1 split docs (not candidate-only rows).
 
 ### 3) One-shot script for 4 datasets at 60K target
 

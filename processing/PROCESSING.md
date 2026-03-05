@@ -13,6 +13,8 @@ It combines:
 - stage-2 post-filter + dedup + final resampling/split
 - integrated monitoring report
 
+Optional mode: pass `--reuse-stage1-output` to skip stage-1 rebuild and apply stage-2 to an existing stage-1 directory.
+
 You no longer need to run a separate monitor command to obtain stage-by-stage stats.
 
 ---
@@ -75,7 +77,7 @@ Stage-1 is equivalent to the former `build_benchmark.py` behavior:
    - target 3-5 docs per author (fallback supports 2 docs)
 7. Sampling to language/genre/length targets (`processing/sampling.py`).
 8. Stratified split by language (`train/dev/test`).
-9. Retrieval set materialization (`candidates/queries/ground_truth`).
+9. Split `documents.jsonl` materialization plus retrieval set materialization (`candidates/queries/ground_truth`).
 
 Outputs:
 - `<stage1_output_dir>/{train,dev,test}/*.jsonl`
@@ -86,7 +88,7 @@ Outputs:
 
 ## 3. Stage-2 Postprocess + Dedup Logic
 
-Input: stage-1 candidates from all splits.
+Input: stage-1 split `documents.jsonl` from all splits (fallback to retrieval files for legacy outputs).
 
 ### 3.1 Post filtering
 
@@ -118,7 +120,7 @@ After filter+dedup:
 - compute language targets
 - sample toward `--post-target-total` (or all remaining docs)
 - split to train/dev/test
-- write final retrieval files
+- write final `documents.jsonl` and retrieval files
 
 Outputs:
 - `<output_dir>/{train,dev,test}/*.jsonl`

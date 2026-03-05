@@ -81,26 +81,6 @@ def _summarize_docs(docs: Iterable[ProcessedDocument]) -> dict:
     }
 
 
-def _candidate_rows_to_docs(rows: list[dict]) -> list[ProcessedDocument]:
-    docs: list[ProcessedDocument] = []
-    for row in rows:
-        token_len = int(row.get("token_length") or count_tokens(row.get("content", "")))
-        docs.append(
-            ProcessedDocument(
-                raw_id=row.get("candidate_id", "") or "",
-                doc_id=row.get("candidate_id"),
-                author_id=row.get("author_id", "") or "",
-                text=row.get("content", "") or "",
-                lang=str(row.get("lang", "") or "").strip().lower(),
-                source=row.get("source", "") or "",
-                genre=row.get("genre", "unknown") or "unknown",
-                token_length=token_len,
-                length_bucket=length_bucket(token_len),
-            )
-        )
-    return docs
-
-
 EXPECTED_SCRIPTS = {
     "en": {"latin"},
     "es": {"latin"},
@@ -543,7 +523,7 @@ def monitor_build_stage(
     splits = split_by_language(final_docs, split_ratios, rng)
 
     split_summary: dict[str, dict] = {}
-    stage1_candidates: list[ProcessedDocument] = []
+    stage1_docs_for_stage2: list[ProcessedDocument] = []
     for split_name, docs in splits.items():
         candidates, queries, ground_truth = build_retrieval_sets(docs, rng)
         split_summary[split_name] = {
@@ -555,7 +535,8 @@ def monitor_build_stage(
             "candidates_by_lang": _sorted_counter(Counter(row["lang"] for row in candidates)),
             "queries_by_lang": _sorted_counter(Counter(row["lang"] for row in queries)),
         }
-        stage1_candidates.extend(_candidate_rows_to_docs(candidates))
+        # Stage-2 now consumes full stage-1 split docs rather than candidate-only rows.
+        stage1_docs_for_stage2.extend(replace(doc) for doc in docs)
 
     for cfg_name in dataset_stats:
         dataset_stats[cfg_name]["dirty_by_reason"] = _sorted_counter(
@@ -620,14 +601,15 @@ def monitor_build_stage(
             "sampling_log": sampling_log,
         },
         "split_and_retrieval": split_summary,
-        "stage1_candidates_for_postprocess": _summarize_docs(stage1_candidates),
+        "stage1_documents_for_stage2": _summarize_docs(stage1_docs_for_stage2),
+        "stage1_candidates_for_postprocess": _summarize_docs(stage1_docs_for_stage2),
     }
-    return build_summary, stage1_candidates
+    return build_summary, stage1_docs_for_stage2
 
 
 def monitor_postprocess_stage(
     *,
-    candidate_docs: list[ProcessedDocument],
+    stage1_docs: list[ProcessedDocument],
     seed: int,
     split_ratios,
     target_total: int | None,
@@ -642,7 +624,7 @@ def monitor_postprocess_stage(
     stage_start = time.perf_counter()
     rng = random.Random(seed)
 
-    input_docs = [replace(doc) for doc in candidate_docs]
+    input_docs = [replace(doc) for doc in stage1_docs]
     filtered_docs: list[ProcessedDocument] = []
     drop_reasons: Counter = Counter()
     drop_reasons_by_lang: Counter = Counter()
@@ -702,6 +684,7 @@ def monitor_postprocess_stage(
             "runtime_seconds": round(time.perf_counter() - stage_start, 3),
             "inputs": {
                 "seed": seed,
+                "input_stage1_docs": len(input_docs),
                 "input_candidates": len(input_docs),
                 "target_total": target_total,
                 "skip_langdetect": skip_langdetect,
@@ -766,6 +749,7 @@ def monitor_postprocess_stage(
         "runtime_seconds": round(time.perf_counter() - stage_start, 3),
         "inputs": {
             "seed": seed,
+            "input_stage1_docs": len(input_docs),
             "input_candidates": len(input_docs),
             "target_total": target_total,
             "skip_langdetect": skip_langdetect,
@@ -910,7 +894,7 @@ def main():
     }
 
     overall_start = time.perf_counter()
-    build_summary, stage1_candidates = monitor_build_stage(
+    build_summary, stage1_docs = monitor_build_stage(
         manifest_path=args.manifest,
         total_docs=args.total_docs,
         split_ratios=build_split_ratios,
@@ -927,7 +911,7 @@ def main():
     )
 
     post_summary = monitor_postprocess_stage(
-        candidate_docs=stage1_candidates,
+        stage1_docs=stage1_docs,
         seed=args.seed,
         split_ratios=post_split_ratios,
         target_total=args.post_target_total,
