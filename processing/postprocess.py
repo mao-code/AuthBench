@@ -264,7 +264,6 @@ def _read_stage_documents(base_dir: Path) -> list[ProcessedDocument]:
     docs: list[ProcessedDocument] = []
     seen_keys: set[str] = set()
     documents_files_loaded = 0
-    retrieval_fallback_splits: list[str] = []
 
     for split in ("train", "dev", "test"):
         split_dir = base_dir / split
@@ -282,9 +281,12 @@ def _read_stage_documents(base_dir: Path) -> list[ProcessedDocument]:
                 docs.append(doc)
             continue
 
-        retrieval_fallback_splits.append(split)
         candidates_path = split_dir / "candidates.jsonl"
+        queries_path = split_dir / "queries.jsonl"
+        loaded_any = False
+
         if candidates_path.exists():
+            loaded_any = True
             for row in read_jsonl(candidates_path):
                 doc = _row_to_processed_doc(row, split=split)
                 if doc is None:
@@ -294,49 +296,42 @@ def _read_stage_documents(base_dir: Path) -> list[ProcessedDocument]:
                     continue
                 seen_keys.add(key)
                 docs.append(doc)
-        else:
+
+        if queries_path.exists():
+            loaded_any = True
+            query_to_author = _read_query_author_map(split_dir / "ground_truth.jsonl")
+            skipped_missing_author = 0
+            for row in read_jsonl(queries_path):
+                query_id = row.get("query_id")
+                author_id = query_to_author.get(str(query_id)) if query_id else ""
+                doc = _row_to_processed_doc(
+                    row,
+                    split=split,
+                    fallback_author_id=author_id,
+                )
+                if doc is None:
+                    skipped_missing_author += 1
+                    continue
+                key = _dedup_key(doc, split)
+                if key in seen_keys:
+                    continue
+                seen_keys.add(key)
+                docs.append(doc)
+            if skipped_missing_author:
+                logger.warning(
+                    "Skipped %d query rows without author mapping in %s/%s.",
+                    skipped_missing_author,
+                    base_dir,
+                    split,
+                )
+
+        if not loaded_any:
             logger.warning(
-                "Missing %s and %s for split %s under %s.",
-                documents_path.name,
-                candidates_path.name,
+                "Missing retrieval files for split %s under %s (expected candidates.jsonl and/or queries.jsonl).",
                 split,
                 base_dir,
             )
 
-        queries_path = split_dir / "queries.jsonl"
-        if not queries_path.exists():
-            continue
-        query_to_author = _read_query_author_map(split_dir / "ground_truth.jsonl")
-        skipped_missing_author = 0
-        for row in read_jsonl(queries_path):
-            query_id = row.get("query_id")
-            author_id = query_to_author.get(str(query_id)) if query_id else ""
-            doc = _row_to_processed_doc(
-                row,
-                split=split,
-                fallback_author_id=author_id,
-            )
-            if doc is None:
-                skipped_missing_author += 1
-                continue
-            key = _dedup_key(doc, split)
-            if key in seen_keys:
-                continue
-            seen_keys.add(key)
-            docs.append(doc)
-        if skipped_missing_author:
-            logger.warning(
-                "Skipped %d query rows without author mapping in %s/%s.",
-                skipped_missing_author,
-                base_dir,
-                split,
-            )
-
-    if retrieval_fallback_splits:
-        logger.warning(
-            "Using retrieval-file fallback for splits without documents.jsonl: %s",
-            ",".join(retrieval_fallback_splits),
-        )
     if documents_files_loaded:
         logger.info(
             "Loaded stage documents from documents.jsonl in %d split(s).",
@@ -559,23 +554,8 @@ def write_outputs(
     output_dir.mkdir(parents=True, exist_ok=True)
     split_summary = {}
     for split_name, docs in splits.items():
-        document_rows = [
-            {
-                "doc_id": doc.doc_id,
-                "raw_id": doc.raw_id,
-                "author_id": doc.author_id,
-                "lang": doc.lang,
-                "genre": doc.genre,
-                "content": doc.text,
-                "source": doc.source,
-                "token_length": doc.token_length,
-                "length_bucket": doc.length_bucket,
-            }
-            for doc in docs
-        ]
         candidates, queries, ground_truth = build_retrieval_sets(docs, rng)
         split_path = output_dir / split_name
-        write_jsonl(split_path / "documents.jsonl", document_rows)
         write_jsonl(split_path / "candidates.jsonl", candidates)
         write_jsonl(split_path / "queries.jsonl", queries)
         write_jsonl(split_path / "ground_truth.jsonl", ground_truth)

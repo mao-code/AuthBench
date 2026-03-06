@@ -9,8 +9,10 @@ set -euo pipefail
 # - YTComments (YouTube Data API)
 
 # ROOT_DIR can be overridden by environment.
-ROOT_DIR="${ROOT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)}"
-cd "$ROOT_DIR"
+# ROOT_DIR="${ROOT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)}"
+# cd "$ROOT_DIR"
+
+ROOT_DIR="${ROOT_DIR:-/home/mh2653/AuthBench}"
 export PYTHONPATH="${ROOT_DIR}"
 # sbatch -p rush --nodelist=rush-compute-01 --gres=gpu:1 --ntasks=1 --cpus-per-task=4 --mem=64G -t 720:00:00 processing/second_phase_web_crawling/scripts/run_webcrawl_300k_cap10M_all4.sh
 
@@ -97,6 +99,10 @@ MAX_DOCUMENTS_PER_DATASET="${MAX_DOCUMENTS_PER_DATASET:-10000000}"
 SHUFFLE_BUFFER_SIZE="${SHUFFLE_BUFFER_SIZE:-10000}"
 CHUNK_PROBABILITY="${CHUNK_PROBABILITY:-0.7}"
 TRUNCATE_TO_TOKENS="${TRUNCATE_TO_TOKENS:-2000}"
+DISABLE_LANG_AUDIT="${DISABLE_LANG_AUDIT:-0}"
+LANG_AUDIT_DROP_DETECTED_MISMATCHES="${LANG_AUDIT_DROP_DETECTED_MISMATCHES:-0}"
+LANG_AUDIT_MAX_DETECT_DOCS="${LANG_AUDIT_MAX_DETECT_DOCS:-50000}"
+LANG_AUDIT_MAX_SUSPECTS="${LANG_AUDIT_MAX_SUSPECTS:-5000}"
 
 MANIFEST_PATH="${MANIFEST_PATH:-processing/second_phase_web_crawling/datasets_manifest.json}"
 OUTPUT_DIR="${OUTPUT_DIR:-processing/second_phase_web_crawling/outputs/pipeline_${RUN_TAG}}"
@@ -277,6 +283,8 @@ while true; do
     --shuffle-buffer-size "$SHUFFLE_BUFFER_SIZE"
     --chunk-probability "$CHUNK_PROBABILITY"
     --truncate-to-tokens "$TRUNCATE_TO_TOKENS"
+    --lang-audit-max-detect-docs "$LANG_AUDIT_MAX_DETECT_DOCS"
+    --lang-audit-max-suspects "$LANG_AUDIT_MAX_SUSPECTS"
     --seed "$SEED"
     --log-level INFO
   )
@@ -301,6 +309,12 @@ while true; do
   fi
   if [[ "$SKIP_YTCOMMENTS" == "1" ]]; then
     CMD+=(--skip-ytcomments)
+  fi
+  if [[ "$DISABLE_LANG_AUDIT" == "1" ]]; then
+    CMD+=(--disable-lang-audit)
+  fi
+  if [[ "$LANG_AUDIT_DROP_DETECTED_MISMATCHES" == "1" ]]; then
+    CMD+=(--lang-audit-drop-detected-mismatches)
   fi
 
   "${CMD[@]}"
@@ -361,7 +375,7 @@ echo "Final caps: stackexchange_max_posts_per_site=$SE_CAP gutenberg_max_docs=$G
 if [[ -f "$OUTPUT_DIR/pipeline_summary.json" ]]; then
   echo ""
   echo "Unified pipeline summary:"
-  jq '{build: {after_author_filter: .build.summary.after_author_filter.total, after_sampling: .build.summary.after_sampling.total}, final: {before_filter: .finalize.input_docs.total, after_filter: .finalize.after_filter.total, after_dedup: .finalize.after_dedup.total, after_sampling: .finalize.after_sampling.total, split_documents: {train: .finalize.splits.train.documents, dev: .finalize.splits.dev.documents, test: .finalize.splits.test.documents}, split_candidates: {train: .finalize.splits.train.candidates, dev: .finalize.splits.dev.candidates, test: .finalize.splits.test.candidates}}}' "$OUTPUT_DIR/pipeline_summary.json"
+  jq '{build: {after_author_filter: .build.summary.after_author_filter.total, after_sampling: .build.summary.after_sampling.total}, final: {before_filter: .finalize.input_docs.total, after_filter: .finalize.after_filter.total, after_dedup: .finalize.after_dedup.total, after_language_audit: .finalize.after_language_audit.total, after_sampling: .finalize.after_sampling.total, language_audit_suspects: .finalize.language_audit_log_count, split_documents: {train: .finalize.splits.train.documents, dev: .finalize.splits.dev.documents, test: .finalize.splits.test.documents}, split_candidates: {train: .finalize.splits.train.candidates, dev: .finalize.splits.dev.candidates, test: .finalize.splits.test.candidates}}}' "$OUTPUT_DIR/pipeline_summary.json"
 fi
 
 echo "[3/3] Done"

@@ -10,7 +10,7 @@ python -m processing.construct_benchmark ...
 
 It combines:
 - build (ingest/chunk/filter/author-caps/sampling/split)
-- quality filtering + dedup + final resampling/split
+- quality filtering + dedup + language audit + final resampling/split
 - integrated monitoring report
 
 You no longer need to run a separate monitor command to obtain stage-by-stage stats.
@@ -75,13 +75,13 @@ Build stage behavior is equivalent to the former `build_benchmark.py` behavior:
    - target 3-5 docs per author (fallback supports 2 docs)
 7. Sampling to language/genre/length targets (`processing/sampling.py`).
 8. Stratified split by language (`train/dev/test`).
-9. Split `documents.jsonl` materialization plus retrieval set materialization (`candidates/queries/ground_truth`).
+9. Retrieval set materialization (`candidates/queries/ground_truth`).
 
 Build artifacts are internal (temporary by default, or persisted if `--work-dir` is set).
 
 ---
 
-## 3. Quality Filter + Dedup + Final Sampling
+## 3. Quality Filter + Dedup + Language Audit + Final Sampling
 
 Input: build-stage documents from the internal pipeline working set.
 
@@ -109,18 +109,35 @@ Dedup is now an explicit stage in real code (`processing/deduplication.py`):
 
 Default behavior is enabled in the unified constructor and can be configured by CLI flags.
 
-### 3.3 Final sampling and split
+### 3.3 Language audit (automated + manual-review support)
+
+After dedup:
+- checks `lang` tags via script consistency and optional `langdetect` verification
+- retags high-confidence `langdetect` mismatches instead of dropping by default
+- writes suspicious rows to `<output_dir>/language_audit_suspects.jsonl`
+- records metrics in `pipeline_summary.json` and `pipeline_dynamics.json`
+- can optionally drop high-confidence detected mismatches via:
+  - `--lang-audit-drop-detected-mismatches`
+
+### 3.4 Final sampling and split
 
 After filter+dedup:
 - compute language targets
 - sample toward `--post-target-total` (or all remaining docs)
 - split to train/dev/test
-- write final `documents.jsonl` and retrieval files
+- write final retrieval files
 
 Outputs:
 - `<output_dir>/{train,dev,test}/*.jsonl`
 - `<output_dir>/pipeline_summary.json`
 - `<output_dir>/quality_filter_drops.log` (if any drop records)
+- `<output_dir>/language_audit_suspects.jsonl` (if suspicious rows exist)
+
+Quick manual check:
+
+```bash
+jq -c '.' <output_dir>/language_audit_suspects.jsonl | head -n 20
+```
 
 ---
 
@@ -183,21 +200,21 @@ Recommended script:
 
 ---
 
-## 5.3 Merge phase1 + phase2 to 1M (phase2 >= 40%)
+## 5.3 Merge phase1 + phase2 (official defaults)
 
 ```bash
 python -m processing.combine_phase_benchmarks \
-  --phase1-dir processing/outputs/pipeline_phase1_official \
-  --phase2-dir processing/second_phase_web_crawling/outputs/pipeline_all4_t300k_cap10M \
-  --output-dir processing/outputs/combined_phase1_phase2_1m \
-  --report-path processing/outputs/combined_phase1_phase2_1m/merge_summary.json \
-  --total-docs 1000000 \
-  --min-phase2-share 0.40 \
+  --output-dir processing/outputs/combined_phase1_official_phase2_webcrawl \
+  --report-path processing/outputs/combined_phase1_official_phase2_webcrawl/merge_summary.json \
+  --min-phase2-share 0.50 \
   --seed 42
 ```
 
-Script wrapper:
-- `processing/scripts/combine_phase1_phase2_300k_cap10M.sh`
+Notes:
+- Defaults already point to:
+  - `processing/outputs/official_ttl300k_cap10M_sf10k_postprocessed_balanced`
+  - `processing/second_phase_web_crawling/outputs/pipeline_all4_t300k_cap10M`
+- If `--total-docs` is omitted, the combiner uses all available docs after dedup + overlap removal.
 
 ---
 
@@ -224,6 +241,12 @@ Dedup:
 - `--dedup-author-similarity-threshold`
 - `--dedup-min-tokens-for-near`
 - `--dedup-lsh-bands`
+
+Language audit:
+- `--disable-lang-audit`
+- `--lang-audit-max-detect-docs`
+- `--lang-audit-min-confidence`
+- `--lang-audit-drop-detected-mismatches`
 
 Monitoring:
 - `--report-path`

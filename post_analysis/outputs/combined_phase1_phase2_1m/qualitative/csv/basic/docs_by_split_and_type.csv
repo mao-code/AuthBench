@@ -1,7 +1,0 @@
-split,doc_type,docs
-dev,candidate,125
-dev,query,125
-test,candidate,136
-test,query,136
-train,candidate,7083
-train,query,7083

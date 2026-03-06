@@ -158,14 +158,46 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--dataset-max-docs", nargs="*", default=[])
     parser.add_argument("--shuffle-buffer-size", type=int, default=10000)
     parser.add_argument("--no-shuffle-datasets", nargs="*", default=[])
+    parser.add_argument("--max-chunk-tokens", type=int, default=500)
+    parser.add_argument("--target-chunk-tokens", type=int, default=100)
+    parser.add_argument("--min-chunk-tokens", type=int, default=10)
     parser.add_argument("--chunk-probability", type=float, default=0.7)
     parser.add_argument("--truncate-to-tokens", type=int, default=2000)
 
     parser.add_argument("--post-target-total", type=int, default=None)
+    parser.add_argument("--post-train-ratio", type=float, default=None)
+    parser.add_argument("--post-dev-ratio", type=float, default=None)
+    parser.add_argument("--post-test-ratio", type=float, default=None)
+    parser.add_argument("--post-spacing-collapse-ratio", type=float, default=0.25)
+    parser.add_argument("--post-min-spacing-run", type=int, default=2)
+    parser.add_argument("--post-max-single-letter-ratio", type=float, default=0.45)
+    parser.add_argument("--post-max-single-letter-run", type=int, default=10)
+    parser.add_argument("--post-min-alpha-ratio", type=float, default=0.25)
+    parser.add_argument("--post-min-alpha-token-ratio", type=float, default=0.5)
     parser.add_argument("--post-skip-langdetect", action="store_true")
+
     parser.add_argument("--disable-dedup", action="store_true")
+    parser.add_argument("--dedup-disable-exact-text", action="store_true")
+    parser.add_argument("--dedup-disable-near-text", action="store_true")
     parser.add_argument("--dedup-near-similarity-threshold", type=float, default=0.92)
+    parser.add_argument("--dedup-min-tokens-for-near", type=int, default=20)
+    parser.add_argument("--dedup-lsh-bands", type=int, default=4)
+    parser.add_argument("--dedup-allow-cross-language-near", action="store_true")
+    parser.add_argument("--dedup-disable-author-similarity", action="store_true")
     parser.add_argument("--dedup-author-similarity-threshold", type=float, default=0.94)
+    parser.add_argument("--dedup-author-profile-docs", type=int, default=3)
+    parser.add_argument("--dedup-allow-same-source-author-similarity", action="store_true")
+    parser.add_argument("--dedup-allow-cross-language-author-similarity", action="store_true")
+    parser.add_argument("--dedup-max-bucket-size", type=int, default=512)
+
+    parser.add_argument("--disable-lang-audit", action="store_true")
+    parser.add_argument("--lang-audit-min-detect-chars", type=int, default=80)
+    parser.add_argument("--lang-audit-max-text-chars", type=int, default=3000)
+    parser.add_argument("--lang-audit-min-confidence", type=float, default=0.85)
+    parser.add_argument("--lang-audit-min-script-chars", type=int, default=8)
+    parser.add_argument("--lang-audit-max-detect-docs", type=int, default=50000)
+    parser.add_argument("--lang-audit-max-suspects", type=int, default=5000)
+    parser.add_argument("--lang-audit-drop-detected-mismatches", action="store_true")
 
     parser.add_argument("--log-level", default="INFO")
     return parser.parse_args()
@@ -327,6 +359,12 @@ def run_construct_stage(args: argparse.Namespace) -> None:
         str(args.test_ratio),
         "--shuffle-buffer-size",
         str(args.shuffle_buffer_size),
+        "--max-chunk-tokens",
+        str(args.max_chunk_tokens),
+        "--target-chunk-tokens",
+        str(args.target_chunk_tokens),
+        "--min-chunk-tokens",
+        str(args.min_chunk_tokens),
         "--chunk-probability",
         str(args.chunk_probability),
         "--truncate-to-tokens",
@@ -348,18 +386,72 @@ def run_construct_stage(args: argparse.Namespace) -> None:
         cmd.extend(["--no-shuffle-datasets", *args.no_shuffle_datasets])
     if args.post_target_total is not None:
         cmd.extend(["--post-target-total", str(args.post_target_total)])
+    if args.post_train_ratio is not None:
+        cmd.extend(["--post-train-ratio", str(args.post_train_ratio)])
+    if args.post_dev_ratio is not None:
+        cmd.extend(["--post-dev-ratio", str(args.post_dev_ratio)])
+    if args.post_test_ratio is not None:
+        cmd.extend(["--post-test-ratio", str(args.post_test_ratio)])
+    if args.post_spacing_collapse_ratio is not None:
+        cmd.extend(["--post-spacing-collapse-ratio", str(args.post_spacing_collapse_ratio)])
+    if args.post_min_spacing_run is not None:
+        cmd.extend(["--post-min-spacing-run", str(args.post_min_spacing_run)])
+    if args.post_max_single_letter_ratio is not None:
+        cmd.extend(["--post-max-single-letter-ratio", str(args.post_max_single_letter_ratio)])
+    if args.post_max_single_letter_run is not None:
+        cmd.extend(["--post-max-single-letter-run", str(args.post_max_single_letter_run)])
+    if args.post_min_alpha_ratio is not None:
+        cmd.extend(["--post-min-alpha-ratio", str(args.post_min_alpha_ratio)])
+    if args.post_min_alpha_token_ratio is not None:
+        cmd.extend(["--post-min-alpha-token-ratio", str(args.post_min_alpha_token_ratio)])
     if args.post_skip_langdetect:
         cmd.append("--post-skip-langdetect")
     if args.disable_dedup:
         cmd.append("--disable-dedup")
+    if args.dedup_disable_exact_text:
+        cmd.append("--dedup-disable-exact-text")
+    if args.dedup_disable_near_text:
+        cmd.append("--dedup-disable-near-text")
     if args.dedup_near_similarity_threshold is not None:
         cmd.extend(
             ["--dedup-near-similarity-threshold", str(args.dedup_near_similarity_threshold)]
         )
+    if args.dedup_min_tokens_for_near is not None:
+        cmd.extend(["--dedup-min-tokens-for-near", str(args.dedup_min_tokens_for_near)])
+    if args.dedup_lsh_bands is not None:
+        cmd.extend(["--dedup-lsh-bands", str(args.dedup_lsh_bands)])
+    if args.dedup_allow_cross_language_near:
+        cmd.append("--dedup-allow-cross-language-near")
+    if args.dedup_disable_author_similarity:
+        cmd.append("--dedup-disable-author-similarity")
     if args.dedup_author_similarity_threshold is not None:
         cmd.extend(
             ["--dedup-author-similarity-threshold", str(args.dedup_author_similarity_threshold)]
         )
+    if args.dedup_author_profile_docs is not None:
+        cmd.extend(["--dedup-author-profile-docs", str(args.dedup_author_profile_docs)])
+    if args.dedup_allow_same_source_author_similarity:
+        cmd.append("--dedup-allow-same-source-author-similarity")
+    if args.dedup_allow_cross_language_author_similarity:
+        cmd.append("--dedup-allow-cross-language-author-similarity")
+    if args.dedup_max_bucket_size is not None:
+        cmd.extend(["--dedup-max-bucket-size", str(args.dedup_max_bucket_size)])
+    if args.disable_lang_audit:
+        cmd.append("--disable-lang-audit")
+    if args.lang_audit_min_detect_chars is not None:
+        cmd.extend(["--lang-audit-min-detect-chars", str(args.lang_audit_min_detect_chars)])
+    if args.lang_audit_max_text_chars is not None:
+        cmd.extend(["--lang-audit-max-text-chars", str(args.lang_audit_max_text_chars)])
+    if args.lang_audit_min_confidence is not None:
+        cmd.extend(["--lang-audit-min-confidence", str(args.lang_audit_min_confidence)])
+    if args.lang_audit_min_script_chars is not None:
+        cmd.extend(["--lang-audit-min-script-chars", str(args.lang_audit_min_script_chars)])
+    if args.lang_audit_max_detect_docs is not None:
+        cmd.extend(["--lang-audit-max-detect-docs", str(args.lang_audit_max_detect_docs)])
+    if args.lang_audit_max_suspects is not None:
+        cmd.extend(["--lang-audit-max-suspects", str(args.lang_audit_max_suspects)])
+    if args.lang_audit_drop_detected_mismatches:
+        cmd.append("--lang-audit-drop-detected-mismatches")
     _run(cmd)
 
 

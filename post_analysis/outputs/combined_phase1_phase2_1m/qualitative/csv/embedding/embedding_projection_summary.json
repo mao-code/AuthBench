@@ -1,7 +1,0 @@
-{
-  "points_used": 3000,
-  "vectorizer_features": 12000,
-  "svd_components": 64,
-  "svd_explained_variance_ratio_sum": 0.279654466206817,
-  "tsne_perplexity": 35
-}

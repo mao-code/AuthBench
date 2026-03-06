@@ -15,6 +15,7 @@ from typing import Iterable
 from . import build_benchmark
 from .config import CHUNKING_DEFAULTS, TARGET_TOTAL_DOCS, default_manifest_path, make_split_ratios
 from .deduplication import DedupConfig, deduplicate_documents
+from .language_audit import LanguageAuditConfig, run_language_audit
 from .postprocess import (
     _read_stage_documents,
     compute_language_targets,
@@ -98,6 +99,20 @@ def _postprocess_namespace(args: argparse.Namespace) -> SimpleNamespace:
     )
 
 
+def _language_audit_config(args: argparse.Namespace) -> LanguageAuditConfig:
+    return LanguageAuditConfig(
+        enabled=not args.disable_lang_audit,
+        min_detect_chars=args.lang_audit_min_detect_chars,
+        max_text_chars=args.lang_audit_max_text_chars,
+        min_confidence=args.lang_audit_min_confidence,
+        min_script_chars=args.lang_audit_min_script_chars,
+        max_detect_docs=args.lang_audit_max_detect_docs,
+        max_suspects=args.lang_audit_max_suspects,
+        drop_detected_mismatches=args.lang_audit_drop_detected_mismatches,
+        seed=args.seed,
+    )
+
+
 def run(args: argparse.Namespace) -> dict:
     if not args.manifest.exists():
         raise FileNotFoundError(f"Manifest not found: {args.manifest}")
@@ -144,7 +159,7 @@ def run(args: argparse.Namespace) -> dict:
 
     try:
         build_start = time.perf_counter()
-        logger.info("Stage 1/4: build corpus -> %s", build_dir)
+        logger.info("Stage 1/5: build corpus -> %s", build_dir)
         build_benchmark.run(
             manifest_path=args.manifest,
             output_dir=build_dir,
@@ -174,13 +189,13 @@ def run(args: argparse.Namespace) -> dict:
         logger.info("Loaded %d docs from build stage.", len(build_docs))
 
         finalize_start = time.perf_counter()
-        logger.info("Stage 2/4: quality filtering")
+        logger.info("Stage 2/5: quality filtering")
         post_args = _postprocess_namespace(args)
         filtered_docs, drop_reasons, drop_by_lang, drop_records = filter_documents(build_docs, post_args)
         if not filtered_docs:
             raise RuntimeError("No documents remain after quality filtering.")
 
-        logger.info("Stage 3/4: deduplication")
+        logger.info("Stage 3/5: deduplication")
         dedup_summary: dict
         dedup_docs = filtered_docs
         if args.disable_dedup:
@@ -210,13 +225,34 @@ def run(args: argparse.Namespace) -> dict:
             if not dedup_docs:
                 raise RuntimeError("No documents remain after deduplication.")
 
-        logger.info("Stage 4/4: final sampling + split writing -> %s", output_dir)
-        target_total = args.post_target_total or len(dedup_docs)
+        logger.info("Stage 4/5: language audit")
+        audit_start = time.perf_counter()
+        audit_cfg = _language_audit_config(args)
+        audited_docs, language_audit_summary, language_suspects = run_language_audit(
+            dedup_docs,
+            config=audit_cfg,
+        )
+        language_audit_summary = _to_plain_jsonable(language_audit_summary)
+        language_audit_summary["runtime_seconds"] = round(time.perf_counter() - audit_start, 3)
+        if not audited_docs:
+            raise RuntimeError("No documents remain after language audit.")
+
+        language_audit_log = output_dir / "language_audit_suspects.jsonl"
+        if language_suspects:
+            write_jsonl(language_audit_log, language_suspects)
+            logger.info(
+                "Wrote language-audit suspects to %s (%d rows)",
+                language_audit_log,
+                len(language_suspects),
+            )
+
+        logger.info("Stage 5/5: final sampling + split writing -> %s", output_dir)
+        target_total = args.post_target_total or len(audited_docs)
         docs_by_lang: dict[str, list[ProcessedDocument]] = {}
-        for doc in dedup_docs:
+        for doc in audited_docs:
             docs_by_lang.setdefault(doc.lang, []).append(doc)
         lang_targets, lang_log = compute_language_targets(docs_by_lang, target_total)
-        selected_docs, sampling_log = sample_documents(dedup_docs, lang_targets, rng)
+        selected_docs, sampling_log = sample_documents(audited_docs, lang_targets, rng)
         splits = split_by_language(selected_docs, post_split_ratios, rng)
         split_summary = write_outputs(splits, output_dir, rng)
 
@@ -229,11 +265,15 @@ def run(args: argparse.Namespace) -> dict:
             "input_docs": _summarize_docs(build_docs),
             "after_filter": _summarize_docs(filtered_docs),
             "after_dedup": _summarize_docs(dedup_docs),
+            "after_language_audit": _summarize_docs(audited_docs),
             "after_sampling": _summarize_docs(selected_docs),
             "drop_reasons": dict(drop_reasons),
             "drop_reasons_by_lang": dict(drop_by_lang),
             "quality_drop_log_path": str(quality_drop_log) if drop_records else None,
             "quality_drop_log_count": len(drop_records),
+            "language_audit": language_audit_summary,
+            "language_audit_log_path": str(language_audit_log) if language_suspects else None,
+            "language_audit_log_count": len(language_suspects),
             "language_targets": lang_log,
             "sampling_deficits": sampling_log,
             "deduplication": dedup_summary,
@@ -289,6 +329,16 @@ def run(args: argparse.Namespace) -> dict:
                     "min_alpha_token_ratio": args.post_min_alpha_token_ratio,
                     "skip_langdetect": args.post_skip_langdetect,
                 },
+                "language_audit": {
+                    "enabled": not args.disable_lang_audit,
+                    "min_detect_chars": args.lang_audit_min_detect_chars,
+                    "max_text_chars": args.lang_audit_max_text_chars,
+                    "min_confidence": args.lang_audit_min_confidence,
+                    "min_script_chars": args.lang_audit_min_script_chars,
+                    "max_detect_docs": args.lang_audit_max_detect_docs,
+                    "max_suspects": args.lang_audit_max_suspects,
+                    "drop_detected_mismatches": args.lang_audit_drop_detected_mismatches,
+                },
             },
             "stages": {
                 "build": {
@@ -304,6 +354,7 @@ def run(args: argparse.Namespace) -> dict:
                 "quality_input_total": finalize_summary["input_docs"]["total"],
                 "quality_after_filter_total": finalize_summary["after_filter"]["total"],
                 "after_dedup_total": finalize_summary["after_dedup"]["total"],
+                "after_language_audit_total": finalize_summary["after_language_audit"]["total"],
                 "final_after_sampling_total": finalize_summary["after_sampling"]["total"],
             },
         }
@@ -324,6 +375,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
             "Unified AuthBench construction pipeline: build + quality filter + dedup + "
+            "language audit + "
             "monitoring report in one run."
         )
     )
@@ -400,6 +452,15 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--dedup-allow-same-source-author-similarity", action="store_true")
     parser.add_argument("--dedup-allow-cross-language-author-similarity", action="store_true")
     parser.add_argument("--dedup-max-bucket-size", type=int, default=512)
+
+    parser.add_argument("--disable-lang-audit", action="store_true")
+    parser.add_argument("--lang-audit-min-detect-chars", type=int, default=80)
+    parser.add_argument("--lang-audit-max-text-chars", type=int, default=3000)
+    parser.add_argument("--lang-audit-min-confidence", type=float, default=0.85)
+    parser.add_argument("--lang-audit-min-script-chars", type=int, default=8)
+    parser.add_argument("--lang-audit-max-detect-docs", type=int, default=50000)
+    parser.add_argument("--lang-audit-max-suspects", type=int, default=5000)
+    parser.add_argument("--lang-audit-drop-detected-mismatches", action="store_true")
 
     parser.add_argument("--log-level", default="INFO")
     return parser.parse_args()

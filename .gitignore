@@ -13,5 +13,7 @@ venv/
 .ipynb_checkpoints/
 
 # raw_analysis/*/data/*
-# */outputs/*
+*/outputs/*
 wandb/
+
+**/outputs/**

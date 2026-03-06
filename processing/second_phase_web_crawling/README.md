@@ -2,6 +2,7 @@
 
 This folder adds new web-sourced corpora and keeps the downstream benchmark logic exactly aligned with `processing/`:
 - unified constructor (multi-stage pipeline + monitoring): `processing.construct_benchmark`
+- same post stages as phase1: quality filter -> dedup -> language audit -> final sampling
 
 ## Sources Included
 
@@ -80,9 +81,22 @@ Outputs:
 - Unified output folder: `processing/second_phase_web_crawling/outputs/pipeline_<run_tag>/`
 - Monitoring report: `<output_dir>/pipeline_dynamics.json` (or custom `--monitor-report-path`)
 - Pipeline summary: `<output_dir>/pipeline_summary.json`
+- Manual-review suspects: `<output_dir>/language_audit_suspects.jsonl` (if suspicious rows exist)
 
 ### 3) One-shot script for 4 datasets at 300K target
 
 ```bash
 bash processing/second_phase_web_crawling/scripts/run_webcrawl_300k_cap10M_all4.sh
+```
+
+### 4) Combine phase1 + phase2 outputs
+
+```bash
+bash processing/second_phase_web_crawling/scripts/run_combine_all_docs_phase1_phase2.sh
+```
+
+### 5) Retag language + combine with 50/50 target
+
+```bash
+bash processing/second_phase_web_crawling/scripts/run_retag_and_combine_600k_50_50.sh
 ```

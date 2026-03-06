@@ -8,7 +8,7 @@ Recommended entrypoint:
 python -m processing.construct_benchmark ...
 ```
 
-It runs one unified pipeline with multiple processing stages (build, quality filtering, dedup, final sampling/split) plus monitoring.
+It runs one unified pipeline with multiple processing stages (build, quality filtering, dedup, language audit, final sampling/split) plus monitoring.
 
 ## CLI
 
@@ -46,15 +46,16 @@ Key flags:
 - `--chunk-probability`: probability to chunk over-limit documents.
 - `--truncate-to-tokens`: punctuation-aware post-chunk truncation cap.
 - `--dedup-*`: controls exact/near-text and author-similarity dedup behavior.
+- `--lang-audit-*`: controls automated language-tag audit and optional mismatch dropping.
 
 Outputs per split (`train|dev|test`):
-- `documents.jsonl`: full split documents with `doc_id`, `author_id`, `lang`, `genre`, `content`, `source`, `token_length`.
 - `candidates.jsonl`: full documents with `candidate_id`, `author_id`, `lang`, `genre`, `content`, `source`, `token_length`.
 - `queries.jsonl`: one query per eligible author in the split (no `author_id` field).
 - `ground_truth.jsonl`: `query_id` → positive candidate ids + `author_id`.
 - Logs and summaries:
   - pipeline summary: `pipeline_summary.json`
   - quality drops: `quality_filter_drops.log` (if drops exist)
+  - language-audit suspects: `language_audit_suspects.jsonl` (if suspicious rows exist)
   - monitoring report: `pipeline_dynamics*.json`
 
 ## Dataset manifest
@@ -74,6 +75,7 @@ See `datasets_manifest.example.json` for a template. Each entry needs:
 - Dirty data filters (unique token ratio, symbol ratio, dominant token ratio, zero-length) with logging to `dirty_docs.log`.
 - Enforces 3–5 docs per author (Section 9) with a fallback down to 2 when data are scarce.
 - Post-filters noisy text (spacing/script/language heuristics), then performs exact/near-text and near-author dedup.
+- Runs an automated language audit, retags high-confidence mismatches, and emits manual-review suspects.
 - Samples to language, genre, and length-bucket targets (Sections 5, 8, 12) up to the global doc budget.
 - Deterministic train/dev/test split per language (Section 4) and IR files for queries/candidates/ground truth (Section 15).
 - Writes one unified monitoring report so stage-by-stage stats do not require a separate monitor run.

@@ -1,8 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-cd "$ROOT_DIR"
+# ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+# cd "$ROOT_DIR"
+
+ROOT_DIR="${ROOT_DIR:-/home/mh2653/AuthBench}"
+export PYTHONPATH="${ROOT_DIR}"
+# sbatch -p rush --nodelist=rush-compute-01 --gres=gpu:1 --ntasks=1 --cpus-per-task=4 --mem=64G -t 720:00:00 processing/scripts/run_phase1_construction.sh
 
 PYTHON_BIN="${PYTHON_BIN:-python3}"
 MANIFEST_PATH="${MANIFEST_PATH:-processing/datasets_manifest.json}"
@@ -17,6 +21,10 @@ SHUFFLE_BUFFER_SIZE="${SHUFFLE_BUFFER_SIZE:-10000}"
 CHUNK_PROBABILITY="${CHUNK_PROBABILITY:-0.7}"
 TRUNCATE_TO_TOKENS="${TRUNCATE_TO_TOKENS:-2000}"
 ALLOW_OTHER_LANGUAGES="${ALLOW_OTHER_LANGUAGES:-1}"
+DISABLE_LANG_AUDIT="${DISABLE_LANG_AUDIT:-0}"
+LANG_AUDIT_DROP_DETECTED_MISMATCHES="${LANG_AUDIT_DROP_DETECTED_MISMATCHES:-0}"
+LANG_AUDIT_MAX_DETECT_DOCS="${LANG_AUDIT_MAX_DETECT_DOCS:-50000}"
+LANG_AUDIT_MAX_SUSPECTS="${LANG_AUDIT_MAX_SUSPECTS:-5000}"
 
 OUTPUT_DIR="${OUTPUT_DIR:-processing/outputs/pipeline_${RUN_TAG}}"
 REPORT_PATH="${REPORT_PATH:-${OUTPUT_DIR}/pipeline_dynamics.json}"
@@ -36,6 +44,8 @@ CMD=(
   --shuffle-buffer-size "$SHUFFLE_BUFFER_SIZE"
   --chunk-probability "$CHUNK_PROBABILITY"
   --truncate-to-tokens "$TRUNCATE_TO_TOKENS"
+  --lang-audit-max-detect-docs "$LANG_AUDIT_MAX_DETECT_DOCS"
+  --lang-audit-max-suspects "$LANG_AUDIT_MAX_SUSPECTS"
   --log-level INFO
 )
 
@@ -55,6 +65,14 @@ fi
 if [[ -n "$NO_SHUFFLE_DATASETS" ]]; then
   read -r -a _NOSHUFFLE <<<"$NO_SHUFFLE_DATASETS"
   CMD+=(--no-shuffle-datasets "${_NOSHUFFLE[@]}")
+fi
+
+if [[ "$DISABLE_LANG_AUDIT" == "1" ]]; then
+  CMD+=(--disable-lang-audit)
+fi
+
+if [[ "$LANG_AUDIT_DROP_DETECTED_MISMATCHES" == "1" ]]; then
+  CMD+=(--lang-audit-drop-detected-mismatches)
 fi
 
 "${CMD[@]}"

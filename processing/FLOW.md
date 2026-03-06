@@ -39,7 +39,7 @@ Each record is normalized into:
    - keep author with 3-5 docs (fallback supports 2 docs).
 7. Language/genre/length sampling (`processing/sampling.py`) toward `--total-docs`.
 8. Stratified split (`train/dev/test`) by language.
-9. Write split `documents.jsonl` and retrieval files (`candidates.jsonl`, `queries.jsonl`, `ground_truth.jsonl`).
+9. Write split retrieval files (`candidates.jsonl`, `queries.jsonl`, `ground_truth.jsonl`).
 
 Build artifacts are written to an internal working directory.
 - default: temporary directory (auto-cleaned)
@@ -47,7 +47,7 @@ Build artifacts are written to an internal working directory.
 
 ---
 
-## Stage 2-4: Quality Filter + Dedup + Final Sampling
+## Stage 2-5: Quality Filter + Dedup + Language Audit + Final Sampling
 
 Input: build-stage documents in memory/working-dir artifacts.
 
@@ -76,7 +76,19 @@ Implemented in `processing/deduplication.py`:
 
 All dedup stats are written into `pipeline_summary.json` and the unified report.
 
-### 2.3 Final sampling and split
+### 2.3 Language audit (automated + manual-review artifacts)
+
+After dedup:
+- run language-audit checks for `lang` tag consistency:
+  - script-to-language consistency checks
+  - optional `langdetect` verification on a configurable sample
+- emit suspicious rows for manual review:
+  - `<output_dir>/language_audit_suspects.jsonl`
+  - `<output_dir>/pipeline_summary.json` language-audit metrics
+- optional strict mode:
+  - drop high-confidence language mismatches with `--lang-audit-drop-detected-mismatches`
+
+### 2.4 Final sampling and split
 
 After filtering+dedup:
 - compute language targets
@@ -85,10 +97,16 @@ After filtering+dedup:
 - write retrieval files
 
 Pipeline outputs:
-- `<output_dir>/{train,dev,test}/*.jsonl`
-  - includes `documents.jsonl` (full split docs) plus retrieval files.
+- `<output_dir>/{train,dev,test}/*.jsonl` (retrieval files)
 - `<output_dir>/pipeline_summary.json`
 - `<output_dir>/quality_filter_drops.log` (if any dropped docs)
+- `<output_dir>/language_audit_suspects.jsonl` (if any suspicious rows)
+
+Manual review quick command:
+
+```bash
+jq -c '.' <output_dir>/language_audit_suspects.jsonl | head -n 20
+```
 
 ---
 
@@ -100,14 +118,14 @@ The constructor writes one report including:
 - pipeline inputs and knobs
 - build-stage summary and sampling shortfall
 - quality-filter/dedup/split stats
-- stage transitions (`build -> filter -> dedup -> final sampling`)
+- stage transitions (`build -> filter -> dedup -> language_audit -> final sampling`)
 
 Default report path:
 - `<output_dir>/pipeline_dynamics.json`
 
 ---
 
-## Phase Combination Flow (1M final benchmark)
+## Phase Combination Flow
 
 Use:
 
@@ -116,10 +134,14 @@ python -m processing.combine_phase_benchmarks ...
 ```
 
 Flow:
-1. Load phase1 and phase2 final stage docs (prefers `documents.jsonl`, falls back to retrieval files).
+1. Load phase1 and phase2 final stage docs from retrieval files (`candidates.jsonl` + `queries.jsonl`).
 2. Optional per-phase dedup.
 3. Cross-phase exact overlap removal (phase2 priority).
-4. Enforce total target (default 1,000,000) and minimum phase2 share (default 40%).
+4. Enforce total target and minimum phase2 share.
+   Defaults are wired to:
+   - `processing/outputs/official_ttl300k_cap10M_sf10k_postprocessed_balanced`
+   - `processing/second_phase_web_crawling/outputs/pipeline_all4_t300k_cap10M`
+   If `--total-docs` is not provided, all available docs are merged.
 5. Sample phase1 and phase2 pools separately.
 6. Merge, assign new IDs, split, and emit retrieval files.
 7. Write merge monitoring report.
@@ -133,4 +155,4 @@ Flow:
 - Phase2 crawl + construction:
   - `processing/second_phase_web_crawling/scripts/run_webcrawl_300k_cap10M_all4.sh`
 - Phase1 + Phase2 merge:
-  - `processing/scripts/combine_phase1_phase2_300k_cap10M.sh`
+  - use `python -m processing.combine_phase_benchmarks`
