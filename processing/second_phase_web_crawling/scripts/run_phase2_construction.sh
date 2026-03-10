@@ -11,7 +11,7 @@ set -euo pipefail
 # ROOT_DIR can be overridden by environment.
 ROOT_DIR="${ROOT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)}"
 export PYTHONPATH="${ROOT_DIR}"
-# sbatch -p rush --nodelist=rush-compute-01 --gres=gpu:1 --ntasks=1 --cpus-per-task=4 --mem=64G -t 720:00:00 processing/second_phase_web_crawling/scripts/run_webcrawl_300k_cap10M_all4.sh
+# sbatch -p rush --nodelist=rush-compute-01 --gres=gpu:1 --ntasks=1 --cpus-per-task=4 --mem=64G -t 720:00:00 processing/second_phase_web_crawling/scripts/run_phase2_construction.sh
 
 # Load .env first (YouTube API key), then optional StackExchange env file.
 if [[ -f "$ROOT_DIR/.env" ]]; then
@@ -27,8 +27,8 @@ fi
 
 PYTHON_BIN="${PYTHON_BIN:-python3}"
 
-RUN_TAG="${RUN_TAG:-all4_t300k_cap10M}"
-TARGET_TOTAL="${TARGET_TOTAL:-300000}"
+RUN_TAG="${RUN_TAG:-phase2_official}"
+TARGET_TOTAL="${TARGET_TOTAL:-600000}"
 POST_TARGET_TOTAL="${POST_TARGET_TOTAL:-300000}"
 SEED="${SEED:-42}"
 PIPELINE_STAGES="${PIPELINE_STAGES:-crawl construct}"
@@ -397,8 +397,8 @@ echo "[3/3] Done"
 # YTCOMMENTS_MAX_COMMENT_PAGES_PER_VIDEO=2 \
 # YTCOMMENTS_MAX_EMPTY_PAGES_PER_VIDEO=1 \
 # YTCOMMENTS_SLEEP_SECONDS=0.2 \
-# bash processing/second_phase_web_crawling/scripts/run_webcrawl_300k_cap10M_all4.sh
+# bash processing/second_phase_web_crawling/scripts/run_phase2_construction.sh
 
 
 # PIPELINE_STAGES="construct" AUTO_RAMP=0 \
-# bash processing/second_phase_web_crawling/scripts/run_webcrawl_300k_cap10M_all4.sh
+# bash processing/second_phase_web_crawling/scripts/run_phase2_construction.sh

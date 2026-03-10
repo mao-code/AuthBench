@@ -200,7 +200,7 @@ Unified phase2 runner:
 ```bash
 python -m processing.second_phase_web_crawling.run_pipeline \
   --stages crawl construct \
-  --output-dir processing/second_phase_web_crawling/outputs/pipeline_all4_t300k_cap10M \
+  --output-dir processing/second_phase_web_crawling/outputs/pipeline_phase2_official \
   --total-docs 300000 \
   --post-target-total 300000 \
   --monitor-overwrite
@@ -244,7 +244,7 @@ python -m processing.combine_phase_benchmarks \
 Notes:
 - Defaults already point to:
   - `processing/outputs/official_ttl300k_cap10M_sf10k_postprocessed_balanced`
-  - `processing/second_phase_web_crawling/outputs/pipeline_all4_t300k_cap10M`
+  - `processing/second_phase_web_crawling/outputs/pipeline_phase2_official`
 - If `--total-docs` is omitted, the combiner uses all available docs after dedup + overlap removal.
 
 ---

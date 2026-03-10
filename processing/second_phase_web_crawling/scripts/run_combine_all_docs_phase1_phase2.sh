@@ -7,7 +7,7 @@ cd "$ROOT_DIR"
 PYTHON_BIN="${PYTHON_BIN:-python3}"
 
 PHASE1_DIR="${PHASE1_DIR:-processing/outputs/pipeline_phase1_official}"
-PHASE2_DIR="${PHASE2_DIR:-processing/second_phase_web_crawling/outputs/pipeline_all4_t300k_cap10M}"
+PHASE2_DIR="${PHASE2_DIR:-processing/second_phase_web_crawling/outputs/pipeline_phase2_official}"
 
 RUN_TAG="${RUN_TAG:-phase1_official_plus_phase2_all4_all_docs}"
 OUTPUT_DIR="${OUTPUT_DIR:-processing/outputs/combined_${RUN_TAG}}"

@@ -149,7 +149,7 @@ Flow:
 4. Enforce total target and minimum phase2 share.
    Defaults are wired to:
    - `processing/outputs/official_ttl300k_cap10M_sf10k_postprocessed_balanced`
-   - `processing/second_phase_web_crawling/outputs/pipeline_all4_t300k_cap10M`
+   - `processing/second_phase_web_crawling/outputs/pipeline_phase2_official`
    If `--total-docs` is not provided, all available docs are merged.
 5. Sample phase1 and phase2 pools separately.
 6. Merge, assign new IDs, split, and emit retrieval files.

@@ -23,7 +23,7 @@ from .types import ProcessedDocument
 logger = logging.getLogger(__name__)
 
 DEFAULT_PHASE1_DIR = Path("processing/outputs/pipeline_phase1_official")
-DEFAULT_PHASE2_DIR = Path("processing/second_phase_web_crawling/outputs/pipeline_all4_t300k_cap10M")
+DEFAULT_PHASE2_DIR = Path("processing/second_phase_web_crawling/outputs/pipeline_phase2_official")
 DEFAULT_COMBINED_OUTPUT_DIR = Path("processing/outputs/combined_phase1_official_phase2_all4_all_docs")
 
 

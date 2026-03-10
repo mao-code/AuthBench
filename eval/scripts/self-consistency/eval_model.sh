@@ -11,8 +11,41 @@ fi
 export PYTHONPATH="$(pwd):${PYTHONPATH:-}"
 
 MODEL="$1"
-DATASET_ROOT="${DATASET_ROOT:-processing/outputs/official_ttl300k_cap10M_sf10k_postprocessed_balanced}"
+DEFAULT_DATASET_CANDIDATES=(
+  "processing/outputs/official_ttl300k_cap10M_sf10k_postprocessed_balanced"
+  "processing/outputs/official_ttl300k_cap10M_sf10k_postprocessed"
+  "processing/outputs/combined_phase1_official_plus_phase2_all4_all_docs"
+  "processing/outputs/pipeline_phase1_official"
+)
+
+resolve_dataset_root() {
+  if [[ -n "${DATASET_ROOT:-}" ]]; then
+    if [[ -d "${DATASET_ROOT}/${SPLIT:-test}" ]]; then
+      printf '%s\n' "${DATASET_ROOT}"
+      return 0
+    fi
+    echo "[ERROR] DATASET_ROOT does not contain split '${SPLIT:-test}': ${DATASET_ROOT}" >&2
+    return 1
+  fi
+
+  local candidate
+  for candidate in "${DEFAULT_DATASET_CANDIDATES[@]}"; do
+    if [[ -d "${candidate}/${SPLIT:-test}" ]]; then
+      printf '%s\n' "${candidate}"
+      return 0
+    fi
+  done
+
+  echo "[ERROR] Could not find a dataset root with split '${SPLIT:-test}'." >&2
+  echo "[ERROR] Checked:" >&2
+  for candidate in "${DEFAULT_DATASET_CANDIDATES[@]}"; do
+    echo "  - ${candidate}" >&2
+  done
+  return 1
+}
+
 SPLIT="${SPLIT:-test}"
+DATASET_ROOT="$(resolve_dataset_root)"
 TASK="${TASK:-both}"
 OUTPUT_DIR="${OUTPUT_DIR:-eval/results/self_consistency}"
 BATCH_SIZE="${BATCH_SIZE:-4}"
@@ -26,6 +59,8 @@ SELF_CONSISTENCY_MAX_NEW_TOKENS="${SELF_CONSISTENCY_MAX_NEW_TOKENS:-96}"
 RUN_BASELINE="${RUN_BASELINE:-1}"
 RUN_SELF_CONSISTENCY="${RUN_SELF_CONSISTENCY:-1}"
 WANDB_RUN_PREFIX="${WANDB_RUN_PREFIX:-self-consistency-compare}"
+
+echo ">>> Using dataset root: ${DATASET_ROOT}"
 
 BASELINE_OUTPUT_DIR="${OUTPUT_DIR}/baseline"
 SELF_CONSISTENCY_OUTPUT_DIR="${OUTPUT_DIR}/self_consistency"
