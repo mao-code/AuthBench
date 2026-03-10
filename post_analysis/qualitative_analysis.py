@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import math
 import re
@@ -56,6 +57,11 @@ def snippet(text: str, max_chars: int = 220) -> str:
     return clean[: max_chars - 3] + "..."
 
 
+def text_hash(text: str | None) -> str:
+    normalized = re.sub(r"\s+", " ", str(text or "").casefold()).strip()
+    return hashlib.blake2b(normalized.encode("utf-8"), digest_size=16).hexdigest()
+
+
 def _mode(values: Iterable[object]) -> object | None:
     items = [v for v in values if v is not None and not (isinstance(v, float) and np.isnan(v))]
     if not items:
@@ -69,6 +75,30 @@ def load_docs(dataset_dir: Path, splits: Sequence[str]) -> pd.DataFrame:
     for split in splits:
         split_dir = dataset_dir / split
         if not split_dir.exists():
+            continue
+
+        documents_path = split_dir / "documents.jsonl"
+        if documents_path.exists():
+            with documents_path.open(encoding="utf-8") as f:
+                for line in f:
+                    row = json.loads(line)
+                    rows.append(
+                        {
+                            "doc_id": row["doc_id"],
+                            "doc_type": row.get("retrieval_role") or "document",
+                            "split": split,
+                            "author_id": row.get("author_id"),
+                            "lang": row.get("lang"),
+                            "genre": row.get("genre"),
+                            "primary_genre": extract_primary_genre(row.get("genre")),
+                            "source": row.get("source"),
+                            "phase": row.get("phase"),
+                            "input_split": row.get("input_split"),
+                            "input_doc_type": row.get("input_doc_type"),
+                            "token_length": row.get("token_length"),
+                            "content": normalize_text(row.get("content")),
+                        }
+                    )
             continue
 
         query_author: dict[str, str | None] = {}
@@ -94,6 +124,9 @@ def load_docs(dataset_dir: Path, splits: Sequence[str]) -> pd.DataFrame:
                             "genre": row.get("genre"),
                             "primary_genre": extract_primary_genre(row.get("genre")),
                             "source": row.get("source"),
+                            "phase": row.get("phase"),
+                            "input_split": row.get("input_split"),
+                            "input_doc_type": row.get("input_doc_type"),
                             "token_length": row.get("token_length"),
                             "content": normalize_text(row.get("content")),
                         }
@@ -115,6 +148,9 @@ def load_docs(dataset_dir: Path, splits: Sequence[str]) -> pd.DataFrame:
                             "genre": row.get("genre"),
                             "primary_genre": extract_primary_genre(row.get("genre")),
                             "source": row.get("source"),
+                            "phase": row.get("phase"),
+                            "input_split": row.get("input_split"),
+                            "input_doc_type": row.get("input_doc_type"),
                             "token_length": row.get("token_length"),
                             "content": normalize_text(row.get("content")),
                         }
@@ -387,6 +423,241 @@ def cross_genre_author_analysis(
     return summary
 
 
+def split_leakage_analysis(docs: pd.DataFrame, out_dir: Path) -> dict:
+    docs_with_author = docs.dropna(subset=["author_id"]).copy()
+    if docs_with_author.empty:
+        save_csv(pd.DataFrame(), out_dir / "author_split_membership.csv")
+        return {}
+
+    membership = (
+        docs_with_author.groupby("author_id")
+        .agg(
+            num_docs=("doc_id", "count"),
+            num_splits=("split", "nunique"),
+            splits=("split", lambda x: ",".join(sorted(set(x)))),
+            dominant_lang=("lang", _mode),
+            num_phases=("phase", lambda x: x.dropna().nunique()),
+        )
+        .reset_index()
+        .sort_values(["num_splits", "num_docs"], ascending=[False, False])
+    )
+    save_csv(membership, out_dir / "author_split_membership.csv")
+
+    membership_dist = (
+        membership.groupby("num_splits")
+        .size()
+        .reset_index(name="authors")
+        .sort_values("num_splits")
+    )
+    membership_dist["pct_authors"] = membership_dist["authors"] / membership_dist["authors"].sum() * 100.0
+    save_csv(membership_dist, out_dir / "author_split_membership_distribution.csv")
+
+    by_lang = (
+        membership.groupby("dominant_lang")
+        .agg(
+            authors=("author_id", "count"),
+            multi_split_authors=("num_splits", lambda x: int((x >= 2).sum())),
+        )
+        .reset_index()
+        .sort_values("authors", ascending=False)
+    )
+    by_lang["pct_multi_split_authors"] = by_lang["multi_split_authors"] / by_lang["authors"] * 100.0
+    save_csv(by_lang, out_dir / "author_split_leakage_by_language.csv")
+
+    split_names = sorted(docs_with_author["split"].dropna().unique().tolist())
+    split_matrix = pd.DataFrame(0, index=split_names, columns=split_names, dtype=int)
+    author_split_sets = (
+        docs_with_author.groupby("author_id")["split"]
+        .agg(lambda x: sorted(set(x.dropna())))
+        .tolist()
+    )
+    for split_set in author_split_sets:
+        for split_a in split_set:
+            for split_b in split_set:
+                split_matrix.loc[split_a, split_b] += 1
+    split_matrix_df = split_matrix.reset_index(names="split")
+    save_csv(split_matrix_df, out_dir / "author_split_overlap_matrix.csv")
+
+    fig_dir = out_dir.parents[1] / "figures"
+    fig_dir.mkdir(parents=True, exist_ok=True)
+
+    plt.figure(figsize=(7, 6))
+    sns.heatmap(split_matrix, annot=True, fmt="d", cmap="YlOrRd", linewidths=0.3)
+    plt.title("Authors appearing across split pairs")
+    plt.tight_layout()
+    plt.savefig(fig_dir / "author_split_overlap_heatmap.png", dpi=300)
+    plt.close()
+
+    phase_summary: dict[str, object] = {}
+    phase_docs = docs_with_author.dropna(subset=["phase"]).copy()
+    if not phase_docs.empty:
+        phase_names = sorted(phase_docs["phase"].dropna().unique().tolist())
+        phase_matrix = pd.DataFrame(0, index=phase_names, columns=phase_names, dtype=int)
+        author_phase_sets = (
+            phase_docs.groupby("author_id")["phase"]
+            .agg(lambda x: sorted(set(x.dropna())))
+            .tolist()
+        )
+        for phase_set in author_phase_sets:
+            for phase_a in phase_set:
+                for phase_b in phase_set:
+                    phase_matrix.loc[phase_a, phase_b] += 1
+        save_csv(phase_matrix.reset_index(names="phase"), out_dir / "author_phase_overlap_matrix.csv")
+
+        plt.figure(figsize=(6, 5))
+        sns.heatmap(phase_matrix, annot=True, fmt="d", cmap="Blues", linewidths=0.3)
+        plt.title("Authors appearing across phase pairs")
+        plt.tight_layout()
+        plt.savefig(fig_dir / "author_phase_overlap_heatmap.png", dpi=300)
+        plt.close()
+
+        phase_summary = {
+            "authors_multi_phase": int((membership["num_phases"] >= 2).sum()),
+            "pct_authors_multi_phase": float((membership["num_phases"] >= 2).mean() * 100.0),
+        }
+
+    summary = {
+        "authors_total": int(len(membership)),
+        "authors_multi_split": int((membership["num_splits"] >= 2).sum()),
+        "pct_authors_multi_split": float((membership["num_splits"] >= 2).mean() * 100.0),
+        "authors_in_all_three_splits": int((membership["num_splits"] >= 3).sum()),
+        **phase_summary,
+    }
+    save_json(summary, out_dir / "split_leakage_summary.json")
+    return summary
+
+
+def exact_duplicate_analysis(docs: pd.DataFrame, out_dir: Path) -> dict:
+    fig_dir = out_dir.parents[1] / "figures"
+    fig_dir.mkdir(parents=True, exist_ok=True)
+
+    def _write_flag_outputs(flag_counts: dict[str, int]) -> None:
+        flag_summary = pd.DataFrame(
+            [{"flag": key, "groups": value} for key, value in flag_counts.items()]
+        )
+        save_csv(flag_summary, out_dir / "exact_duplicate_flag_summary.csv")
+
+        plt.figure(figsize=(8, 5))
+        sns.barplot(data=flag_summary, x="flag", y="groups", hue="flag", dodge=False, legend=False)
+        plt.xticks(rotation=15, ha="right")
+        plt.ylabel("Duplicate groups")
+        plt.xlabel("")
+        plt.title("Exact duplicate group counts")
+        plt.tight_layout()
+        plt.savefig(fig_dir / "exact_duplicate_group_flags.png", dpi=300)
+        plt.close()
+
+    work = docs[docs["content_len_chars"] > 0].copy()
+    if work.empty:
+        save_csv(pd.DataFrame(), out_dir / "exact_duplicate_groups.csv")
+        _write_flag_outputs(
+            {
+                "cross_author_groups": 0,
+                "cross_split_groups": 0,
+                "cross_phase_groups": 0,
+            }
+        )
+        return {}
+
+    work["content_hash"] = work["content"].map(text_hash)
+    counts = work["content_hash"].value_counts()
+    duplicate_hashes = counts[counts > 1].index
+    dup_docs = work[work["content_hash"].isin(duplicate_hashes)].copy()
+    if dup_docs.empty:
+        save_csv(pd.DataFrame(), out_dir / "exact_duplicate_groups.csv")
+        zero_summary = {
+            "duplicate_groups": 0,
+            "duplicate_docs": 0,
+            "cross_author_groups": 0,
+            "cross_split_groups": 0,
+            "cross_phase_groups": 0,
+        }
+        _write_flag_outputs(
+            {
+                "cross_author_groups": 0,
+                "cross_split_groups": 0,
+                "cross_phase_groups": 0,
+            }
+        )
+        save_json(zero_summary, out_dir / "exact_duplicate_summary.json")
+        return zero_summary
+
+    group_rows: list[dict] = []
+    for content_hash, group in dup_docs.groupby("content_hash", sort=False):
+        authors = sorted({str(v) for v in group["author_id"].dropna().tolist()})
+        splits = sorted({str(v) for v in group["split"].dropna().tolist()})
+        phases = sorted({str(v) for v in group["phase"].dropna().tolist()})
+        langs = sorted({str(v) for v in group["lang"].dropna().tolist()})
+        sources = sorted({str(v) for v in group["source"].dropna().tolist()})
+        group_rows.append(
+            {
+                "content_hash": content_hash,
+                "duplicate_docs": int(len(group)),
+                "unique_authors": int(len(authors)),
+                "unique_splits": int(len(splits)),
+                "unique_phases": int(len(phases)),
+                "unique_languages": int(len(langs)),
+                "unique_sources": int(len(sources)),
+                "cross_author": len(authors) >= 2,
+                "cross_split": len(splits) >= 2,
+                "cross_phase": len(phases) >= 2,
+                "authors": ",".join(authors[:8]),
+                "splits": ",".join(splits),
+                "phases": ",".join(phases),
+                "langs": ",".join(langs),
+                "sources": ",".join(sources[:8]),
+                "text_snippet": snippet(group["content"].iloc[0], max_chars=180),
+            }
+        )
+
+    groups_df = pd.DataFrame(group_rows).sort_values(
+        ["duplicate_docs", "unique_authors", "unique_splits"],
+        ascending=[False, False, False],
+    )
+    save_csv(groups_df, out_dir / "exact_duplicate_groups.csv")
+    save_csv(groups_df.head(200), out_dir / "exact_duplicate_groups_top200.csv")
+
+    flag_counts = {
+        "cross_author_groups": int(groups_df["cross_author"].sum()),
+        "cross_split_groups": int(groups_df["cross_split"].sum()),
+        "cross_phase_groups": int(groups_df["cross_phase"].sum()),
+    }
+    _write_flag_outputs(flag_counts)
+    flag_summary = pd.DataFrame(
+        [{"flag": key, "groups": value} for key, value in flag_counts.items()]
+    )
+
+    preview_lines = [
+        "# Exact Duplicate Preview",
+        "",
+        "Top duplicate groups after whitespace/case normalization.",
+        "",
+    ]
+    for idx, row in groups_df.head(80).iterrows():
+        preview_lines.extend(
+            [
+                f"## Group {idx + 1}",
+                f"- duplicate_docs: `{row['duplicate_docs']}` | unique_authors: `{row['unique_authors']}` | unique_splits: `{row['unique_splits']}` | unique_phases: `{row['unique_phases']}`",
+                f"- splits: `{row['splits']}` | phases: `{row['phases']}` | langs: `{row['langs']}`",
+                f"- authors: `{row['authors']}`",
+                f"- snippet: {row['text_snippet']}",
+                "",
+            ]
+        )
+    (out_dir / "exact_duplicate_preview.md").write_text("\n".join(preview_lines), encoding="utf-8")
+
+    summary = {
+        "duplicate_groups": int(len(groups_df)),
+        "duplicate_docs": int(dup_docs.shape[0]),
+        "cross_author_groups": int(groups_df["cross_author"].sum()),
+        "cross_split_groups": int(groups_df["cross_split"].sum()),
+        "cross_phase_groups": int(groups_df["cross_phase"].sum()),
+        "largest_group_size": int(groups_df["duplicate_docs"].max()),
+    }
+    save_json(summary, out_dir / "exact_duplicate_summary.json")
+    return summary
+
+
 def _sample_group(df: pd.DataFrame, max_docs: int, seed: int) -> pd.DataFrame:
     if len(df) <= max_docs:
         return df.reset_index(drop=True)
@@ -500,7 +771,8 @@ def topic_controlled_same_genre_pairs(
             topic_df = group[group["topic_cluster"] == topic_cluster].copy().reset_index(drop=True)
             if len(topic_df) < 10:
                 continue
-            x_topic = x[group["topic_cluster"] == topic_cluster]
+            cluster_mask = (group["topic_cluster"] == topic_cluster).to_numpy()
+            x_topic = x[cluster_mask]
             n_neighbors = min(12, len(topic_df))
             nbrs = NearestNeighbors(metric="cosine", n_neighbors=n_neighbors)
             nbrs.fit(x_topic)
@@ -791,6 +1063,8 @@ def write_markdown_report(
     basic_summary: dict,
     entropy_summary: dict,
     cross_summary: dict,
+    split_summary: dict,
+    duplicate_summary: dict,
     topic_summary: dict,
     embedding_summary: dict,
 ) -> None:
@@ -820,6 +1094,18 @@ def write_markdown_report(
         f"- authors_multi_genre: `{cross_summary.get('authors_multi_genre', 0)}`",
         f"- genre_pairs_nonzero: `{cross_summary.get('genre_pairs_nonzero', 0)}`",
         "",
+        "## Split Leakage",
+        f"- authors_multi_split: `{split_summary.get('authors_multi_split', 0)}`",
+        f"- pct_authors_multi_split: `{split_summary.get('pct_authors_multi_split', 0):.2f}%`",
+        f"- authors_in_all_three_splits: `{split_summary.get('authors_in_all_three_splits', 0)}`",
+        "",
+        "## Exact Duplicates",
+        f"- duplicate_groups: `{duplicate_summary.get('duplicate_groups', 0)}`",
+        f"- duplicate_docs: `{duplicate_summary.get('duplicate_docs', 0)}`",
+        f"- cross_author_groups: `{duplicate_summary.get('cross_author_groups', 0)}`",
+        f"- cross_split_groups: `{duplicate_summary.get('cross_split_groups', 0)}`",
+        f"- cross_phase_groups: `{duplicate_summary.get('cross_phase_groups', 0)}`",
+        "",
         "## Topic-Controlled Same-Genre Pairs",
         f"- topic_groups_processed: `{topic_summary.get('topic_groups_processed', 0)}`",
         f"- topic_clusters_summarized: `{topic_summary.get('topic_clusters_summarized', 0)}`",
@@ -837,9 +1123,13 @@ def write_markdown_report(
         "- csv/basic/summary_overview.json",
         "- csv/entropy/author_genre_entropy.csv",
         "- csv/cross_genre/cross_genre_author_pairs.csv",
+        "- csv/split_leakage/author_split_membership.csv",
+        "- csv/duplicates/exact_duplicate_groups.csv",
         "- csv/topic_pairs/topic_controlled_same_genre_pairs.csv",
         "- csv/embedding/embedding_projection_points.csv",
         "- figures/author_genre_entropy_histogram.png",
+        "- figures/author_split_overlap_heatmap.png",
+        "- figures/exact_duplicate_group_flags.png",
         "- figures/cross_genre_author_overlap_heatmap.png",
         "- figures/embedding_projection_by_language.png",
         "- figures/embedding_projection_by_primary_genre.png",
@@ -854,12 +1144,16 @@ def run(dataset_dir: Path, output_dir: Path, splits: Sequence[str], seed: int) -
     basic_dir = csv_root / "basic"
     entropy_dir = csv_root / "entropy"
     cross_dir = csv_root / "cross_genre"
+    split_dir = csv_root / "split_leakage"
+    duplicate_dir = csv_root / "duplicates"
     topic_dir = csv_root / "topic_pairs"
     embedding_dir = csv_root / "embedding"
 
     basic_summary = author_basic_tables(docs, basic_dir)
     entropy_df, entropy_summary = per_author_genre_entropy(docs, entropy_dir)
     cross_summary = cross_genre_author_analysis(docs, entropy_df, cross_dir)
+    split_summary = split_leakage_analysis(docs, split_dir)
+    duplicate_summary = exact_duplicate_analysis(docs, duplicate_dir)
     topic_summary = topic_controlled_same_genre_pairs(docs, topic_dir, seed=seed)
     embedding_summary = embedding_visualization(docs, embedding_dir, seed=seed)
 
@@ -870,6 +1164,8 @@ def run(dataset_dir: Path, output_dir: Path, splits: Sequence[str], seed: int) -
         basic_summary=basic_summary,
         entropy_summary=entropy_summary,
         cross_summary=cross_summary,
+        split_summary=split_summary,
+        duplicate_summary=duplicate_summary,
         topic_summary=topic_summary,
         embedding_summary=embedding_summary,
     )

@@ -18,6 +18,11 @@ from AuthBench.eval.evaluators import (
     evaluate_authorship_attribution,
     evaluate_authorship_representation,
 )
+from AuthBench.eval.self_consistency import (
+    DEFAULT_STYLE_PROMPT_TEMPLATE,
+    SelfConsistencyCausalLMEmbedder,
+    SelfConsistencyConfig,
+)
 from AuthBench.utilities import model_registry
 
 
@@ -88,6 +93,45 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--wandb-entity", help="Optional W&B entity/org.")
     parser.add_argument("--wandb-tags", nargs="*", help="Optional list of W&B tags.")
     parser.add_argument(
+        "--self-consistency",
+        action="store_true",
+        help="Sample multiple style descriptions from supported causal LLMs and average their pooled vectors.",
+    )
+    parser.add_argument(
+        "--self-consistency-samples",
+        type=int,
+        default=4,
+        help="Number of sampled style descriptions per document when --self-consistency is enabled.",
+    )
+    parser.add_argument(
+        "--self-consistency-top-k",
+        type=int,
+        default=50,
+        help="Top-k sampling cutoff for self-consistency generation.",
+    )
+    parser.add_argument(
+        "--self-consistency-temperature",
+        type=float,
+        default=0.8,
+        help="Sampling temperature for self-consistency generation.",
+    )
+    parser.add_argument(
+        "--self-consistency-max-new-tokens",
+        type=int,
+        default=96,
+        help="Maximum number of generated tokens per sampled style description.",
+    )
+    parser.add_argument(
+        "--self-consistency-include-original",
+        action="store_true",
+        help="Average the sampled style vector with the direct document embedding.",
+    )
+    parser.add_argument(
+        "--self-consistency-prompt",
+        default=DEFAULT_STYLE_PROMPT_TEMPLATE,
+        help="Prompt template for style generation; must include a {text} placeholder.",
+    )
+    parser.add_argument(
         "--trust-remote-code",
         action="store_true",
         help="Pass trust_remote_code=True to HF loaders. Even without this flag, "
@@ -104,6 +148,8 @@ def parse_args() -> argparse.Namespace:
 
 def resolve_models(args: argparse.Namespace) -> List[str]:
     if args.all_models:
+        if args.self_consistency:
+            return model_registry.self_consistency_model_names()
         return sorted(model_registry.MODEL_HF_PATHS.keys())
     return args.models
 
@@ -148,6 +194,12 @@ def _init_wandb(args: argparse.Namespace):
             "max_topic_candidates": args.max_topic_candidates,
             "topic_seed": args.topic_seed,
             "dataset_root": str(args.dataset_root),
+            "self_consistency": args.self_consistency,
+            "self_consistency_samples": args.self_consistency_samples,
+            "self_consistency_top_k": args.self_consistency_top_k,
+            "self_consistency_temperature": args.self_consistency_temperature,
+            "self_consistency_max_new_tokens": args.self_consistency_max_new_tokens,
+            "self_consistency_include_original": args.self_consistency_include_original,
         },
     )
     return run
@@ -155,6 +207,8 @@ def _init_wandb(args: argparse.Namespace):
 
 def main() -> int:
     args = parse_args()
+    if args.self_consistency and args.late_interaction:
+        raise ValueError("Self-consistency only supports pooled vectors; disable --late-interaction.")
     wandb_run = _init_wandb(args)
     split = load_split(args.dataset_root, args.split)
 
@@ -166,18 +220,59 @@ def main() -> int:
     for model_name in model_names:
         repo = model_registry.get_hf_repo(model_name) if model_name in model_registry.MODEL_HF_PATHS else model_name
         print(f"\n=== Evaluating {model_name} ({repo}) on {args.split} ===")
-        embedder = HuggingFaceEmbedder(
-            repo,
-            device=args.device,
-            max_length=args.max_length,
-            no_truncation=args.no_truncation,
-            pooling=args.pooling,
-            torch_dtype=args.torch_dtype,
-            trust_remote_code=args.trust_remote_code,
-            allow_remote_code_fallback=allow_remote_code_fallback,
-        )
+        use_self_consistency = args.self_consistency
+        if (
+            args.self_consistency
+            and model_name in model_registry.MODEL_HF_PATHS
+            and not model_registry.supports_self_consistency(model_name)
+        ):
+            raise ValueError(
+                f"Model '{model_name}' does not support generation-based self-consistency. "
+                "Use one of the causal LLM checkpoints from model_registry.self_consistency_model_names()."
+            )
+
+        if use_self_consistency:
+            embedder = SelfConsistencyCausalLMEmbedder(
+                repo,
+                config=SelfConsistencyConfig(
+                    num_samples=args.self_consistency_samples,
+                    top_k=args.self_consistency_top_k,
+                    temperature=args.self_consistency_temperature,
+                    max_new_tokens=args.self_consistency_max_new_tokens,
+                    prompt_template=args.self_consistency_prompt,
+                    include_original=args.self_consistency_include_original,
+                ),
+                device=args.device,
+                max_length=args.max_length,
+                no_truncation=args.no_truncation,
+                pooling=args.pooling,
+                torch_dtype=args.torch_dtype,
+                trust_remote_code=args.trust_remote_code,
+                allow_remote_code_fallback=allow_remote_code_fallback,
+            )
+        else:
+            embedder = HuggingFaceEmbedder(
+                repo,
+                device=args.device,
+                max_length=args.max_length,
+                no_truncation=args.no_truncation,
+                pooling=args.pooling,
+                torch_dtype=args.torch_dtype,
+                trust_remote_code=args.trust_remote_code,
+                allow_remote_code_fallback=allow_remote_code_fallback,
+            )
 
         model_result: Dict[str, object] = {"hf_repo": repo}
+        if use_self_consistency:
+            model_result["self_consistency"] = {
+                "enabled": True,
+                "num_samples": args.self_consistency_samples,
+                "top_k": args.self_consistency_top_k,
+                "temperature": args.self_consistency_temperature,
+                "max_new_tokens": args.self_consistency_max_new_tokens,
+                "include_original": args.self_consistency_include_original,
+                "prompt_template": args.self_consistency_prompt,
+            }
         if args.task in ("representation", "both"):
             rep_metrics = evaluate_authorship_representation(
                 split=split,

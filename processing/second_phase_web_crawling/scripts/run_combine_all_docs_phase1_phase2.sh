@@ -6,7 +6,7 @@ cd "$ROOT_DIR"
 
 PYTHON_BIN="${PYTHON_BIN:-python3}"
 
-PHASE1_DIR="${PHASE1_DIR:-processing/outputs/official_ttl300k_cap10M_sf10k_postprocessed_balanced}"
+PHASE1_DIR="${PHASE1_DIR:-processing/outputs/pipeline_phase1_official}"
 PHASE2_DIR="${PHASE2_DIR:-processing/second_phase_web_crawling/outputs/pipeline_all4_t300k_cap10M}"
 
 RUN_TAG="${RUN_TAG:-phase1_official_plus_phase2_all4_all_docs}"
@@ -18,16 +18,16 @@ TRAIN_RATIO="${TRAIN_RATIO:-0.8}"
 DEV_RATIO="${DEV_RATIO:-0.1}"
 TEST_RATIO="${TEST_RATIO:-0.1}"
 
-# Combine all loaded documents while still using rebalance/sampling logic by default.
-TAKE_ALL_DOCS="${TAKE_ALL_DOCS:-0}"
-DISABLE_DEDUP="${DISABLE_DEDUP:-1}"
-DISABLE_CROSS_PHASE_OVERLAP_REMOVAL="${DISABLE_CROSS_PHASE_OVERLAP_REMOVAL:-1}"
+# Full-pool merge: keep every document that survives dedup / exact cross-phase overlap checks.
+TAKE_ALL_DOCS="${TAKE_ALL_DOCS:-1}"
+DISABLE_DEDUP="${DISABLE_DEDUP:-0}"
+DISABLE_CROSS_PHASE_OVERLAP_REMOVAL="${DISABLE_CROSS_PHASE_OVERLAP_REMOVAL:-0}"
 MIN_PHASE2_SHARE="${MIN_PHASE2_SHARE:-0.5}"
-ALLOW_LOWER_PHASE2_SHARE="${ALLOW_LOWER_PHASE2_SHARE:-1}"
+ALLOW_LOWER_PHASE2_SHARE="${ALLOW_LOWER_PHASE2_SHARE:-0}"
 
 # Optional hard cap. Leave empty to keep all docs.
 TOTAL_DOCS="${TOTAL_DOCS:-}"
-EXACT_50_50="${EXACT_50_50:-1}"
+EXACT_50_50="${EXACT_50_50:-0}"
 
 if [[ "$EXACT_50_50" == "1" && "$TAKE_ALL_DOCS" != "1" && -z "$TOTAL_DOCS" ]]; then
   TOTAL_DOCS="$("$PYTHON_BIN" - "$PHASE1_DIR" "$PHASE2_DIR" <<'PY'
@@ -84,5 +84,5 @@ echo "Report: $REPORT_PATH"
 if command -v jq >/dev/null 2>&1 && [[ -f "$REPORT_PATH" ]]; then
   echo ""
   echo "Merge summary:"
-  jq '{effective_total_docs: .inputs.effective_total_docs, phase1_selected: .stage_counts.phase1_selected, phase2_selected: .stage_counts.phase2_selected, phase2_share_final: .stage_counts.phase2_share_final, split_documents: {train: .splits.train.documents, dev: .splits.dev.documents, test: .splits.test.documents}}' "$REPORT_PATH"
+  jq '{effective_total_docs: .inputs.effective_total_docs, phase1_selected: .stage_counts.phase1_selected, phase2_selected: .stage_counts.phase2_selected, phase2_share_final: .stage_counts.phase2_share_final, exported: {documents: .stage_counts.combined_exported_documents, candidates: .stage_counts.combined_exported_candidates, queries: .stage_counts.combined_exported_queries}, split_documents: {train: .splits.train.documents, dev: .splits.dev.documents, test: .splits.test.documents}}' "$REPORT_PATH"
 fi

@@ -37,9 +37,12 @@ Each record is normalized into:
 5. Dirty filtering (`processing/dirty.py`).
 6. Hash author ids (`source + raw_author`) and apply author caps:
    - keep author with 3-5 docs (fallback supports 2 docs).
-7. Language/genre/length sampling (`processing/sampling.py`) toward `--total-docs`.
-8. Stratified split (`train/dev/test`) by language.
-9. Write split retrieval files (`candidates.jsonl`, `queries.jsonl`, `ground_truth.jsonl`).
+7. Materialize the author-filtered pool as split `documents.jsonl` build artifacts.
+
+Important:
+- Stage 1 keeps the early quality-oriented filtering logic.
+- Stage 1 does not apply the final benchmark-size cap.
+- The goal is to maximize usable documents before later cleanup and balancing.
 
 Build artifacts are written to an internal working directory.
 - default: temporary directory (auto-cleaned)
@@ -88,11 +91,17 @@ After dedup:
 - optional strict mode:
   - drop high-confidence language mismatches with `--lang-audit-drop-detected-mismatches`
 
-### 2.4 Final sampling and split
+### 2.4 Final balanced bucket sampling and split
 
 After filtering+dedup:
-- compute language targets
-- sample documents
+- resolve the final benchmark target:
+  - `--post-target-total` if provided
+  - otherwise `--total-docs`
+- sample documents with hierarchical bucket control:
+  - language
+  - genre within language
+  - length bucket within genre
+- reallocate leftover quota to remaining available docs when some buckets are underfull
 - split into `train/dev/test`
 - write retrieval files
 
@@ -116,9 +125,9 @@ No separate `monitor_pipeline` run is required.
 
 The constructor writes one report including:
 - pipeline inputs and knobs
-- build-stage summary and sampling shortfall
+- build-stage summary and author-filtered build output
 - quality-filter/dedup/split stats
-- stage transitions (`build -> filter -> dedup -> language_audit -> final sampling`)
+- stage transitions (`build -> filter -> dedup -> language_audit -> final balanced sampling`)
 
 Default report path:
 - `<output_dir>/pipeline_dynamics.json`
@@ -152,7 +161,11 @@ Flow:
 
 - Phase1 full construction:
   - `processing/scripts/run_phase1_construction.sh`
+- Phase1 sanity construction:
+  - `processing/scripts/run_phase1_construction_sanity.sh`
 - Phase2 crawl + construction:
   - `processing/second_phase_web_crawling/scripts/run_webcrawl_300k_cap10M_all4.sh`
+- Phase2 sanity construction:
+  - `processing/second_phase_web_crawling/scripts/run_webcrawl_300k_cap10M_all4_sanity.sh`
 - Phase1 + Phase2 merge:
   - use `python -m processing.combine_phase_benchmarks`

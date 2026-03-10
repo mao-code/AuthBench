@@ -159,7 +159,7 @@ def run(args: argparse.Namespace) -> dict:
 
     try:
         build_start = time.perf_counter()
-        logger.info("Stage 1/5: build corpus -> %s", build_dir)
+        logger.info("Stage 1/5: build author-filtered corpus -> %s", build_dir)
         build_benchmark.run(
             manifest_path=args.manifest,
             output_dir=build_dir,
@@ -175,6 +175,8 @@ def run(args: argparse.Namespace) -> dict:
             allow_other_languages=args.allow_other_languages,
             chunking_params=chunking_params,
             truncate_to_tokens=args.truncate_to_tokens,
+            defer_sampling=True,
+            write_retrieval_artifacts=False,
         )
         build_runtime = round(time.perf_counter() - build_start, 3)
 
@@ -246,8 +248,8 @@ def run(args: argparse.Namespace) -> dict:
                 len(language_suspects),
             )
 
-        logger.info("Stage 5/5: final sampling + split writing -> %s", output_dir)
-        target_total = args.post_target_total or len(audited_docs)
+        logger.info("Stage 5/5: final balanced sampling + split writing -> %s", output_dir)
+        target_total = args.post_target_total if args.post_target_total is not None else args.total_docs
         docs_by_lang: dict[str, list[ProcessedDocument]] = {}
         for doc in audited_docs:
             docs_by_lang.setdefault(doc.lang, []).append(doc)
@@ -280,6 +282,10 @@ def run(args: argparse.Namespace) -> dict:
             "splits": _to_plain_jsonable(split_summary),
             "runtime_seconds": round(time.perf_counter() - finalize_start, 3),
         }
+
+        build_output_total = build_summary.get("build_output", {}).get("total")
+        if build_output_total is None:
+            build_output_total = build_summary.get("after_sampling", {}).get("total")
 
         pipeline_summary = {
             "generated_at_utc": datetime.now(timezone.utc).isoformat(),
@@ -350,7 +356,11 @@ def run(args: argparse.Namespace) -> dict:
                 "quality_dedup_sampling": _to_plain_jsonable(finalize_summary),
             },
             "stage_transitions": {
-                "build_after_sampling_total": build_summary.get("after_sampling", {}).get("total"),
+                "build_after_sampling_total": build_output_total,
+                "build_output_total": build_output_total,
+                "build_sampling_deferred": bool(
+                    build_summary.get("sampling", {}).get("deferred_to_finalize")
+                ),
                 "quality_input_total": finalize_summary["input_docs"]["total"],
                 "quality_after_filter_total": finalize_summary["after_filter"]["total"],
                 "after_dedup_total": finalize_summary["after_dedup"]["total"],
@@ -398,7 +408,12 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--overwrite-report", action="store_true")
 
-    parser.add_argument("--total-docs", type=int, default=TARGET_TOTAL_DOCS)
+    parser.add_argument(
+        "--total-docs",
+        type=int,
+        default=TARGET_TOTAL_DOCS,
+        help="Final benchmark target used when --post-target-total is not provided.",
+    )
     parser.add_argument("--seed", type=int, default=42)
 
     parser.add_argument("--train-ratio", type=float, default=0.8)
@@ -430,7 +445,12 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--truncate-to-tokens", type=int, default=None)
 
-    parser.add_argument("--post-target-total", type=int, default=None)
+    parser.add_argument(
+        "--post-target-total",
+        type=int,
+        default=None,
+        help="Optional explicit final benchmark target after filtering, dedup, and language audit.",
+    )
     parser.add_argument("--post-spacing-collapse-ratio", type=float, default=0.25)
     parser.add_argument("--post-min-spacing-run", type=int, default=2)
     parser.add_argument("--post-max-single-letter-ratio", type=float, default=0.45)

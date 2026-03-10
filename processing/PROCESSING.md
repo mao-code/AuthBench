@@ -9,7 +9,7 @@ python -m processing.construct_benchmark ...
 ```
 
 It combines:
-- build (ingest/chunk/filter/author-caps/sampling/split)
+- build (ingest/chunk/filter/author-caps/materialize)
 - quality filtering + dedup + language audit + final resampling/split
 - integrated monitoring report
 
@@ -73,9 +73,12 @@ Build stage behavior is equivalent to the former `build_benchmark.py` behavior:
    - long repeated char runs
 6. Author constraints:
    - target 3-5 docs per author (fallback supports 2 docs)
-7. Sampling to language/genre/length targets (`processing/sampling.py`).
-8. Stratified split by language (`train/dev/test`).
-9. Retrieval set materialization (`candidates/queries/ground_truth`).
+7. Materialize the author-filtered pool into build artifacts (`documents.jsonl` in split folders).
+
+Important:
+- The build stage no longer applies the hard benchmark-size cap.
+- Its job is to preserve as many clean, author-qualified documents as possible for later stages.
+- The final size cap is enforced only after quality filtering, dedup, and language audit.
 
 Build artifacts are internal (temporary by default, or persisted if `--work-dir` is set).
 
@@ -119,11 +122,18 @@ After dedup:
 - can optionally drop high-confidence detected mismatches via:
   - `--lang-audit-drop-detected-mismatches`
 
-### 3.4 Final sampling and split
+### 3.4 Final balanced sampling and split
 
 After filter+dedup:
-- compute language targets
-- sample toward `--post-target-total` (or all remaining docs)
+- resolve the final target:
+  - `--post-target-total` if provided
+  - otherwise `--total-docs`
+- compute hierarchical bucket targets
+- sample with balanced control over:
+  - language
+  - genre within language
+  - length bucket within genre
+- spill unmet bucket budget into remaining available documents when a bucket is sparse
 - split to train/dev/test
 - write final retrieval files
 
@@ -169,6 +179,7 @@ python -m processing.construct_benchmark \
   --report-path processing/outputs/pipeline_phase1_official/pipeline_dynamics.json \
   --overwrite-report \
   --total-docs 300000 \
+  --post-target-total 300000 \
   --allow-other-languages \
   --max-documents-per-dataset 10000000 \
   --shuffle-buffer-size 10000 \
@@ -197,6 +208,26 @@ python -m processing.second_phase_web_crawling.run_pipeline \
 
 Recommended script:
 - `processing/second_phase_web_crawling/scripts/run_webcrawl_300k_cap10M_all4.sh`
+
+---
+
+## 5.4 Sanity checks
+
+Phase1 sanity run:
+
+```bash
+bash processing/scripts/run_phase1_construction_sanity.sh
+```
+
+Phase2 sanity run:
+
+```bash
+bash processing/second_phase_web_crawling/scripts/run_webcrawl_300k_cap10M_all4_sanity.sh
+```
+
+Notes:
+- The Phase2 sanity script defaults to a tiny `crawl construct` run.
+- If `YOUTUBE_API_KEY` is not set, it automatically skips the YouTube source for the smoke test.
 
 ---
 

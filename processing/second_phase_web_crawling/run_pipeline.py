@@ -153,6 +153,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--train-ratio", type=float, default=0.8)
     parser.add_argument("--dev-ratio", type=float, default=0.1)
     parser.add_argument("--test-ratio", type=float, default=0.1)
+    parser.add_argument("--sanity-check", action="store_true")
+    parser.add_argument("--sanity-limit", type=int, default=2000)
     parser.add_argument("--allow-other-languages", action="store_true")
     parser.add_argument("--max-documents-per-dataset", type=int, default=None)
     parser.add_argument("--dataset-max-docs", nargs="*", default=[])
@@ -374,6 +376,8 @@ def run_construct_stage(args: argparse.Namespace) -> None:
     ]
     if args.allow_other_languages:
         cmd.append("--allow-other-languages")
+    if args.sanity_check:
+        cmd.extend(["--sanity-check", "--sanity-limit", str(args.sanity_limit)])
     if args.monitor_overwrite:
         cmd.append("--overwrite-report")
     if args.work_dir is not None:

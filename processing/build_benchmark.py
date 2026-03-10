@@ -157,6 +157,8 @@ def run(
     allow_other_languages: bool,
     chunking_params: dict,
     truncate_to_tokens: int | None,
+    defer_sampling: bool = False,
+    write_retrieval_artifacts: bool = True,
 ):
     rng = random.Random(seed)
     configs = load_manifest(manifest_path)
@@ -309,14 +311,21 @@ def run(
         len(fallback_authors_added),
     )
 
-    targets = build_sampling_targets(total_docs=total_docs)
-    sampled_docs, sampling_log = sample_to_targets(
-        selected_docs, targets, rng, allow_other_languages=allow_other_languages
-    )
+    sampling_log: list[dict] = []
+    if defer_sampling:
+        logger.info(
+            "Deferring balanced bucket sampling to the final stage; carrying forward %d author-filtered docs.",
+            len(selected_docs),
+        )
+        carried_docs = selected_docs
+    else:
+        targets = build_sampling_targets(total_docs=total_docs)
+        carried_docs, sampling_log = sample_to_targets(
+            selected_docs, targets, rng, allow_other_languages=allow_other_languages
+        )
+        logger.info("Sampled %d documents toward target %d.", len(carried_docs), targets.total_docs)
 
-    logger.info("Sampled %d documents toward target %d.", len(sampled_docs), targets.total_docs)
-
-    final_docs = assign_document_ids(sampled_docs)
+    final_docs = assign_document_ids(carried_docs)
     total_authors = len({doc.author_id for doc in final_docs})
     avg_docs_per_author = (len(final_docs) / total_authors) if total_authors else 0
     genre_by_language = _lang_distribution(final_docs, lambda d: d.genre)
@@ -341,18 +350,21 @@ def run(
             }
             for doc in docs
         ]
-        candidates, queries, ground_truth = build_retrieval_sets(docs, rng)
         write_jsonl(split_path / "documents.jsonl", document_rows)
-        write_jsonl(split_path / "candidates.jsonl", candidates)
-        write_jsonl(split_path / "queries.jsonl", queries)
-        write_jsonl(split_path / "ground_truth.jsonl", ground_truth)
-        logger.info(
-            "[%s] docs=%d candidates=%d queries=%d",
-            split_name,
-            len(docs),
-            len(candidates),
-            len(queries),
-        )
+        if write_retrieval_artifacts:
+            candidates, queries, ground_truth = build_retrieval_sets(docs, rng)
+            write_jsonl(split_path / "candidates.jsonl", candidates)
+            write_jsonl(split_path / "queries.jsonl", queries)
+            write_jsonl(split_path / "ground_truth.jsonl", ground_truth)
+            logger.info(
+                "[%s] docs=%d candidates=%d queries=%d",
+                split_name,
+                len(docs),
+                len(candidates),
+                len(queries),
+            )
+        else:
+            logger.info("[%s] docs=%d retrieval_artifacts=skipped", split_name, len(docs))
 
     summary = {
         "inputs": {
@@ -363,8 +375,14 @@ def run(
         },
         "after_author_filter": _summarize(selected_docs),
         "after_sampling": _summarize(final_docs),
+        "build_output": _summarize(final_docs),
         "splits": {name: _summarize(docs) for name, docs in splits.items()},
         # "fallback_authors": fallback_authors_added,
+        "sampling": {
+            "deferred_to_finalize": defer_sampling,
+            "requested_total_docs": total_docs,
+            "write_retrieval_artifacts": write_retrieval_artifacts,
+        },
         "final_statistics": {
             "unique_authors": total_authors,
             "avg_docs_per_author": avg_docs_per_author,
@@ -499,6 +517,16 @@ def parse_args():
         help="If set, truncate each (possibly chunked) document to this token cap using punctuation-aware boundaries.",
     )
     parser.add_argument(
+        "--defer-sampling",
+        action="store_true",
+        help="Carry all author-filtered documents forward and let a later pipeline stage apply the final benchmark cap.",
+    )
+    parser.add_argument(
+        "--skip-retrieval-artifacts",
+        action="store_true",
+        help="Write only documents.jsonl for each split and skip candidates/queries/ground_truth generation.",
+    )
+    parser.add_argument(
         "--log-level",
         default="INFO",
         help="Logging level (INFO, DEBUG).",
@@ -554,6 +582,8 @@ def main():
             "chunk_probability": args.chunk_probability,
         },
         truncate_to_tokens=args.truncate_to_tokens,
+        defer_sampling=args.defer_sampling,
+        write_retrieval_artifacts=not args.skip_retrieval_artifacts,
     )
 
 

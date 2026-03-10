@@ -5,7 +5,7 @@ see widespread use for authorship attribution and stylistic analysis pipelines, 
 their Hugging Face model cards and leaderboard presence as of 2025.
 """
 
-from typing import Dict
+from typing import Dict, List
 
 # Mapping from human-friendly names to Hugging Face repository identifiers.
 MODEL_HF_PATHS: Dict[str, str] = {
@@ -71,6 +71,25 @@ MODEL_HF_PATHS: Dict[str, str] = {
 }
 
 
+# Causal LLM checkpoints that can run the generation-based self-consistency pipeline.
+SELF_CONSISTENCY_LLM_MODELS = {
+    "qwen3-4b",
+    "qwen3-4b-instruct",
+    "qwen2.5-3b",
+    "qwen2.5-3b-instruct",
+    "qwen2.5-7b-instruct",
+    "llama3.1-8b",
+    "llama3.1-8b-instruct",
+    "llama3-8b",
+    "llama3-8b-instruct",
+    "llama2-7b",
+    "llama2-7b-chat",
+    "deepseek-llm-7b-base",
+    "deepseek-llm-7b-chat",
+    "deepseek-coder-6.7b-instruct",
+}
+
+
 def get_hf_repo(model_name: str) -> str:
     """Return the Hugging Face path for the requested model."""
     try:
@@ -79,3 +98,15 @@ def get_hf_repo(model_name: str) -> str:
         raise KeyError(
             f"Unknown model '{model_name}'. Available options: {', '.join(sorted(MODEL_HF_PATHS))}"
         ) from exc
+
+
+def supports_self_consistency(model_name: str) -> bool:
+    """Return whether the registry model supports generation-based self-consistency."""
+
+    return model_name in SELF_CONSISTENCY_LLM_MODELS
+
+
+def self_consistency_model_names() -> List[str]:
+    """Return the registry models that support generation-based self-consistency."""
+
+    return sorted(SELF_CONSISTENCY_LLM_MODELS)

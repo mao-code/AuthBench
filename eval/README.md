@@ -84,6 +84,21 @@ python -m AuthBench.eval.runner \
   --max-topic-candidates 5000
 ```
 
+For generation-capable causal LLMs, you can enable self-consistency style embeddings:
+sample multiple style descriptions with top-k sampling, pool each description, and
+average the resulting vectors:
+
+```bash
+python -m AuthBench.eval.runner \
+  --split test \
+  --models qwen2.5-3b-instruct \
+  --self-consistency \
+  --self-consistency-samples 4 \
+  --self-consistency-top-k 50 \
+  --self-consistency-temperature 0.8 \
+  --self-consistency-max-new-tokens 96
+```
+
 TF-IDF baseline (cosine on TF-IDF vectors) is available via the dedicated runner:
 
 ```bash
@@ -144,6 +159,11 @@ Useful flags:
 - `--candidate-chunk-size` to control candidate token batch size during late interaction.
 - Late interaction pads to `--max-length` to keep token tensors alignable; lower the
   length or subset queries/candidates if memory spikes.
+- `--self-consistency` to sample multiple style descriptions from supported causal LLMs
+  and average their pooled vectors. Tune with `--self-consistency-samples`,
+  `--self-consistency-top-k`, `--self-consistency-temperature`, and
+  `--self-consistency-max-new-tokens`. Add `--self-consistency-include-original` if you
+  want to blend the sampled style vector with the direct document embedding.
 - `--wandb-project` (runner/train) to push metrics to Weights & Biases; combine with
   `--wandb-run-name/--wandb-entity/--wandb-tags` as needed.
 - `--eval-fraction-epoch` to trigger evals at a fraction of each epoch (e.g., 0.5 for mid-epoch) and
@@ -155,6 +175,8 @@ Scripts:
 - `eval/scripts/train_model.sh <model-name>` – run one model for 1 epoch with mid-epoch eval and LoRA (rank 16 by default; override with `LORA_RANK`). Results are written under `eval/results/training_summary/<model>/`.
 - `eval/scripts/train_all_models.sh` – train the default top-2 models per group (LLM-base, LLM-instruct, Embedding, Embedding-instruct) with LoRA rank 16. Override the list with `MODELS="m1 m2 ..."`.
 - `eval/scripts/eval_all_models.sh` – evaluate a broad set of embedding models (or override via `MODELS="m1 m2"`) and store per-model JSON outputs with fine-grained breakdowns for leaderboard building.
+- `eval/scripts/self-consistency/eval_model.sh <model-name>` – run one causal LLM with generation-based self-consistency embeddings.
+- `eval/scripts/self-consistency/eval_all_llms.sh` – sweep the registry’s supported causal LLMs with the same self-consistency settings.
 
 Checkpoints are saved under `--output-dir/<model>` with a `training_summary.json` that
 captures the final dev/test metrics for quick comparison to pre-trained baselines.

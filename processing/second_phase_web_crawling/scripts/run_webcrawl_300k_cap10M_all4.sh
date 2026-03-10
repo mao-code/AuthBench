@@ -9,10 +9,7 @@ set -euo pipefail
 # - YTComments (YouTube Data API)
 
 # ROOT_DIR can be overridden by environment.
-# ROOT_DIR="${ROOT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)}"
-# cd "$ROOT_DIR"
-
-ROOT_DIR="${ROOT_DIR:-/home/mh2653/AuthBench}"
+ROOT_DIR="${ROOT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)}"
 export PYTHONPATH="${ROOT_DIR}"
 # sbatch -p rush --nodelist=rush-compute-01 --gres=gpu:1 --ntasks=1 --cpus-per-task=4 --mem=64G -t 720:00:00 processing/second_phase_web_crawling/scripts/run_webcrawl_300k_cap10M_all4.sh
 
@@ -35,6 +32,8 @@ TARGET_TOTAL="${TARGET_TOTAL:-300000}"
 POST_TARGET_TOTAL="${POST_TARGET_TOTAL:-300000}"
 SEED="${SEED:-42}"
 PIPELINE_STAGES="${PIPELINE_STAGES:-crawl construct}"
+SANITY_CHECK="${SANITY_CHECK:-0}"
+SANITY_LIMIT="${SANITY_LIMIT:-2000}"
 
 TARGET_LANGUAGES="${TARGET_LANGUAGES:-en,zh,hi,es,fr,ar,ru,de,ja,ko}"
 
@@ -117,14 +116,17 @@ fi
 
 read -r -a STAGE_ARGS <<<"$PIPELINE_STAGES"
 RUN_CONSTRUCT=0
+RUN_CRAWL=0
 for stage in "${STAGE_ARGS[@]}"; do
+  if [[ "$stage" == "crawl" ]]; then
+    RUN_CRAWL=1
+  fi
   if [[ "$stage" == "construct" ]]; then
     RUN_CONSTRUCT=1
-    break
   fi
 done
 
-if [[ "$SKIP_YTCOMMENTS" != "1" && -z "${YOUTUBE_API_KEY:-}" ]]; then
+if [[ "$RUN_CRAWL" == "1" && "$SKIP_YTCOMMENTS" != "1" && -z "${YOUTUBE_API_KEY:-}" ]]; then
   echo "Error: YOUTUBE_API_KEY is required for YTComments. Add it to .env or export it."
   exit 1
 fi
@@ -230,9 +232,11 @@ WS_CAP_TOTAL="$WIKISOURCE_MAX_TOTAL_DOCS"
 YT_CAP="$YTCOMMENTS_MAX_DOCS"
 
 ROUND=1
+BUILD_OUTPUT_TOTAL=0
 FINAL_AFTER_SAMPLING=0
+RAMP_TARGET="${POST_TARGET_TOTAL:-$TARGET_TOTAL}"
 
-echo "[1/3] Running crawl + unified pipeline (target=${TARGET_TOTAL})"
+echo "[1/3] Running crawl + unified pipeline (target=${RAMP_TARGET})"
 echo "skip flags: stackexchange=${SKIP_STACKEXCHANGE} gutenberg=${SKIP_GUTENBERG} wikisource=${SKIP_WIKISOURCE} ytcomments=${SKIP_YTCOMMENTS}"
 echo "stages: ${PIPELINE_STAGES}"
 
@@ -316,6 +320,9 @@ while true; do
   if [[ "$LANG_AUDIT_DROP_DETECTED_MISMATCHES" == "1" ]]; then
     CMD+=(--lang-audit-drop-detected-mismatches)
   fi
+  if [[ "$SANITY_CHECK" == "1" ]]; then
+    CMD+=(--sanity-check --sanity-limit "$SANITY_LIMIT")
+  fi
 
   "${CMD[@]}"
 
@@ -329,14 +336,15 @@ while true; do
     exit 1
   fi
 
-  FINAL_AFTER_SAMPLING="$(jq -r '.stage_transitions.build_after_sampling_total // 0' "$MONITOR_REPORT_PATH")"
-  echo "round=${ROUND} after_sampling=${FINAL_AFTER_SAMPLING} target=${TARGET_TOTAL}"
+  BUILD_OUTPUT_TOTAL="$(jq -r '.stage_transitions.build_output_total // .stage_transitions.build_after_sampling_total // 0' "$MONITOR_REPORT_PATH")"
+  FINAL_AFTER_SAMPLING="$(jq -r '.stage_transitions.final_after_sampling_total // 0' "$MONITOR_REPORT_PATH")"
+  echo "round=${ROUND} build_output=${BUILD_OUTPUT_TOTAL} final_after_sampling=${FINAL_AFTER_SAMPLING} target=${RAMP_TARGET}"
 
   if [[ "$AUTO_RAMP" != "1" ]]; then
     break
   fi
 
-  if (( FINAL_AFTER_SAMPLING >= TARGET_TOTAL )); then
+  if (( FINAL_AFTER_SAMPLING >= RAMP_TARGET )); then
     echo "Target reached in round ${ROUND}."
     break
   fi
@@ -369,13 +377,14 @@ done
 echo "[2/3] Summaries"
 echo "Monitor:      $MONITOR_REPORT_PATH"
 echo "Output:       $OUTPUT_DIR"
-echo "Build-stage after_sampling: $FINAL_AFTER_SAMPLING"
+echo "Build-stage output: $BUILD_OUTPUT_TOTAL"
+echo "Final benchmark size: $FINAL_AFTER_SAMPLING"
 echo "Final caps: stackexchange_max_posts_per_site=$SE_CAP gutenberg_max_docs=$GB_CAP wikisource_max_docs_per_wiki=$WS_CAP_PER_WIKI wikisource_max_total_docs=$WS_CAP_TOTAL ytcomments_max_docs=$YT_CAP"
 
 if [[ -f "$OUTPUT_DIR/pipeline_summary.json" ]]; then
   echo ""
   echo "Unified pipeline summary:"
-  jq '{build: {after_author_filter: .build.summary.after_author_filter.total, after_sampling: .build.summary.after_sampling.total}, final: {before_filter: .finalize.input_docs.total, after_filter: .finalize.after_filter.total, after_dedup: .finalize.after_dedup.total, after_language_audit: .finalize.after_language_audit.total, after_sampling: .finalize.after_sampling.total, language_audit_suspects: .finalize.language_audit_log_count, split_documents: {train: .finalize.splits.train.documents, dev: .finalize.splits.dev.documents, test: .finalize.splits.test.documents}, split_candidates: {train: .finalize.splits.train.candidates, dev: .finalize.splits.dev.candidates, test: .finalize.splits.test.candidates}}}' "$OUTPUT_DIR/pipeline_summary.json"
+  jq '{build: {after_author_filter: .build.summary.after_author_filter.total, build_output: (.build.summary.build_output.total // .build.summary.after_sampling.total), sampling_deferred: (.build.summary.sampling.deferred_to_finalize // false)}, final: {before_filter: .finalize.input_docs.total, after_filter: .finalize.after_filter.total, after_dedup: .finalize.after_dedup.total, after_language_audit: .finalize.after_language_audit.total, after_sampling: .finalize.after_sampling.total, language_audit_suspects: .finalize.language_audit_log_count, split_documents: {train: .finalize.splits.train.documents, dev: .finalize.splits.dev.documents, test: .finalize.splits.test.documents}, split_candidates: {train: .finalize.splits.train.candidates, dev: .finalize.splits.dev.candidates, test: .finalize.splits.test.candidates}}}' "$OUTPUT_DIR/pipeline_summary.json"
 fi
 
 echo "[3/3] Done"

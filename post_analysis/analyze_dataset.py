@@ -53,8 +53,11 @@ def read_jsonl(
                     "source": row.get("source"),
                     "token_length": row.get("token_length"),
                     "author_id": row.get("author_id"),
-                    "doc_type": doc_type,
+                    "doc_type": row.get("retrieval_role") or doc_type,
                     "split": split,
+                    "phase": row.get("phase"),
+                    "input_split": row.get("input_split"),
+                    "input_doc_type": row.get("input_doc_type"),
                 }
             )
     return pd.DataFrame(records)
@@ -66,10 +69,12 @@ def load_documents(dataset_dir: Path, splits: Sequence[str]) -> pd.DataFrame:
         split_dir = dataset_dir / split
         if not split_dir.exists():
             continue
+        documents_path = split_dir / "documents.jsonl"
+        if documents_path.exists():
+            frames.append(read_jsonl(documents_path, "doc_id", "document", split))
+            continue
         frames.append(read_jsonl(split_dir / "queries.jsonl", "query_id", "query", split))
-        frames.append(
-            read_jsonl(split_dir / "candidates.jsonl", "candidate_id", "candidate", split)
-        )
+        frames.append(read_jsonl(split_dir / "candidates.jsonl", "candidate_id", "candidate", split))
     if not frames:
         raise FileNotFoundError(f"No data found in {dataset_dir} for splits {splits}.")
     docs = pd.concat(frames, ignore_index=True)
@@ -216,6 +221,46 @@ def genre_tables(docs: pd.DataFrame, output_dir: Path) -> None:
     save_csv(primary_by_lang, output_dir / "primary_genres_by_language.csv")
 
 
+def phase_tables(docs: pd.DataFrame, output_dir: Path) -> None:
+    phase_docs = docs.dropna(subset=["phase"]).copy()
+    if phase_docs.empty:
+        return
+
+    overall = (
+        phase_docs.groupby("phase")
+        .size()
+        .reset_index(name="docs")
+        .sort_values("docs", ascending=False)
+    )
+    overall["pct_all_docs"] = percent(overall["docs"]).round(2)
+
+    by_lang = (
+        phase_docs.groupby(["lang", "phase"])
+        .size()
+        .reset_index(name="docs")
+        .sort_values(["lang", "docs"], ascending=[True, False])
+    )
+    by_lang["pct_within_lang"] = (
+        by_lang["docs"] / by_lang.groupby("lang")["docs"].transform("sum") * 100
+    ).round(2)
+
+    by_split_type = (
+        phase_docs.groupby(["split", "doc_type", "phase"])
+        .size()
+        .reset_index(name="docs")
+        .sort_values(["split", "doc_type", "docs"], ascending=[True, True, False])
+    )
+    by_split_type["pct_within_split_doc_type"] = (
+        by_split_type["docs"]
+        / by_split_type.groupby(["split", "doc_type"])["docs"].transform("sum")
+        * 100
+    ).round(2)
+
+    save_csv(overall, output_dir / "phases_overall.csv")
+    save_csv(by_lang, output_dir / "phases_by_language.csv")
+    save_csv(by_split_type, output_dir / "phases_by_split_doc_type.csv")
+
+
 def token_length_tables(docs: pd.DataFrame, output_dir: Path) -> None:
     def compute(group_cols: List[str], filename: str) -> None:
         grouped = docs.groupby(group_cols)["token_length"]
@@ -257,6 +302,50 @@ def source_table(docs: pd.DataFrame, output_dir: Path) -> None:
     )
     sources["pct_all_docs"] = percent(sources["docs"]).round(2)
     save_csv(sources, output_dir / "sources_overall.csv")
+
+
+def author_split_overlap_tables(docs: pd.DataFrame, output_dir: Path) -> None:
+    author_docs = docs.dropna(subset=["author_id"]).copy()
+    if author_docs.empty:
+        return
+
+    membership = (
+        author_docs.groupby("author_id")
+        .agg(
+            docs=("doc_id", "count"),
+            splits=("split", lambda x: ",".join(sorted(set(x)))),
+            num_splits=("split", "nunique"),
+            dominant_lang=("lang", lambda x: x.mode().iloc[0] if not x.mode().empty else None),
+        )
+        .reset_index()
+        .sort_values(["num_splits", "docs"], ascending=[False, False])
+    )
+    save_csv(membership, output_dir / "author_split_membership.csv")
+
+    membership_dist = (
+        membership.groupby("num_splits")
+        .size()
+        .reset_index(name="authors")
+        .sort_values("num_splits")
+    )
+    membership_dist["pct_authors"] = percent(membership_dist["authors"]).round(2)
+    save_csv(membership_dist, output_dir / "author_split_membership_distribution.csv")
+
+    split_names = sorted(author_docs["split"].dropna().unique().tolist())
+    overlap_rows: List[Dict[str, object]] = []
+    split_sets = author_docs.groupby("author_id")["split"].agg(lambda x: set(x.dropna())).tolist()
+    for split_a in split_names:
+        for split_b in split_names:
+            overlap = sum(1 for split_set in split_sets if split_a in split_set and split_b in split_set)
+            overlap_rows.append(
+                {
+                    "split_a": split_a,
+                    "split_b": split_b,
+                    "authors": overlap,
+                }
+            )
+    overlap_df = pd.DataFrame(overlap_rows)
+    save_csv(overlap_df, output_dir / "author_split_overlap_matrix.csv")
 
 
 def author_tables(docs: pd.DataFrame, output_dir: Path) -> None:
@@ -383,6 +472,86 @@ def positive_pair_tables(
     save_csv(by_lang, output_dir / "positive_pairs_by_language.csv")
 
 
+def retrieval_structure_tables(
+    ground_truth: pd.DataFrame, docs: pd.DataFrame, output_dir: Path
+) -> None:
+    if ground_truth.empty:
+        return
+
+    query_meta = (
+        docs[docs["doc_type"] == "query"][
+            ["doc_id", "lang", "phase", "split", "author_id"]
+        ]
+        .rename(columns={"doc_id": "query_id"})
+        .drop_duplicates(subset=["query_id"])
+    )
+    candidate_meta = (
+        docs[docs["doc_type"] == "candidate"][
+            ["doc_id", "author_id", "lang", "phase", "split"]
+        ]
+        .rename(
+            columns={
+                "doc_id": "candidate_id",
+                "author_id": "candidate_author_id",
+                "lang": "candidate_lang",
+                "phase": "candidate_phase",
+                "split": "candidate_split",
+            }
+        )
+        .drop_duplicates(subset=["candidate_id"])
+    )
+
+    gt = ground_truth.copy()
+    positive_counts = gt.groupby("query_id").size().reset_index(name="positive_candidates")
+    query_level = positive_counts.merge(query_meta, on="query_id", how="left")
+
+    overall = pd.DataFrame(
+        {
+            "queries": [int(query_level["query_id"].nunique())],
+            "avg_positive_candidates": [float(query_level["positive_candidates"].mean())],
+            "median_positive_candidates": [float(query_level["positive_candidates"].median())],
+            "min_positive_candidates": [int(query_level["positive_candidates"].min())],
+            "max_positive_candidates": [int(query_level["positive_candidates"].max())],
+        }
+    ).round(2)
+    save_csv(overall, output_dir / "retrieval_structure_overall.csv")
+
+    by_lang = (
+        query_level.groupby("lang")
+        .agg(
+            queries=("query_id", "nunique"),
+            avg_positive_candidates=("positive_candidates", "mean"),
+            median_positive_candidates=("positive_candidates", "median"),
+        )
+        .reset_index()
+        .sort_values("queries", ascending=False)
+        .round(2)
+    )
+    save_csv(by_lang, output_dir / "retrieval_structure_by_language.csv")
+
+    if query_level["phase"].notna().any():
+        by_phase = (
+            query_level.groupby("phase")
+            .agg(
+                queries=("query_id", "nunique"),
+                avg_positive_candidates=("positive_candidates", "mean"),
+                median_positive_candidates=("positive_candidates", "median"),
+            )
+            .reset_index()
+            .sort_values("queries", ascending=False)
+            .round(2)
+        )
+        save_csv(by_phase, output_dir / "retrieval_structure_by_phase.csv")
+
+    candidate_authors = (
+        candidate_meta.groupby("candidate_author_id")["candidate_id"]
+        .nunique()
+        .reset_index(name="candidate_docs")
+        .sort_values("candidate_docs", ascending=False)
+    )
+    save_csv(candidate_authors, output_dir / "candidate_docs_per_author.csv")
+
+
 def plot_language_distribution(docs: pd.DataFrame, output_dir: Path) -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
     order = docs["lang"].value_counts().index
@@ -452,6 +621,23 @@ def plot_primary_genre_share(docs: pd.DataFrame, output_dir: Path, top_n: int = 
     plt.close()
 
 
+def plot_phase_distribution(docs: pd.DataFrame, output_dir: Path) -> None:
+    phase_docs = docs.dropna(subset=["phase"]).copy()
+    if phase_docs.empty:
+        return
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+    order = phase_docs["lang"].value_counts().index
+    plt.figure(figsize=(12, 6))
+    sns.countplot(data=phase_docs, x="lang", hue="phase", order=order)
+    plt.xlabel("Language")
+    plt.ylabel("Document count")
+    plt.title("Phase distribution by language")
+    plt.tight_layout()
+    plt.savefig(output_dir / "phase_distribution_by_language.png", dpi=300)
+    plt.close()
+
+
 def run_analysis(dataset_dir: Path, output_dir: Path, splits: Sequence[str]) -> None:
     csv_dir = output_dir / "csv"
     fig_dir = output_dir / "figures"
@@ -462,15 +648,19 @@ def run_analysis(dataset_dir: Path, output_dir: Path, splits: Sequence[str]) -> 
 
     language_tables(docs, csv_dir)
     genre_tables(docs, csv_dir)
+    phase_tables(docs, csv_dir)
     token_length_tables(docs, csv_dir)
     source_table(docs, csv_dir)
     author_tables(docs, csv_dir)
+    author_split_overlap_tables(docs, csv_dir)
     positive_pair_tables(ground_truth, docs, csv_dir)
+    retrieval_structure_tables(ground_truth, docs, csv_dir)
 
     plot_language_distribution(docs, fig_dir)
     plot_primary_genre_heatmap(docs, fig_dir)
     plot_token_length_box(docs, fig_dir)
     plot_primary_genre_share(docs, fig_dir)
+    plot_phase_distribution(docs, fig_dir)
 
 
 def parse_args() -> argparse.Namespace:

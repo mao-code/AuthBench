@@ -23,7 +23,7 @@ from .config import (
 from .dirty import dirty_reason
 from .sampling import build_retrieval_sets, sample_language_docs, split_by_language
 from .types import ProcessedDocument
-from .utils import count_tokens, length_bucket, read_jsonl, write_jsonl
+from .utils import count_tokens, deterministic_shuffle, length_bucket, read_jsonl, write_jsonl
 
 logger = logging.getLogger(__name__)
 
@@ -229,6 +229,24 @@ def _row_to_processed_doc(
     genre = str(row.get("genre", "unknown") or "unknown")
     source = str(row.get("source", "") or "")
     raw_id = str(row.get("raw_id") or doc_id or "")
+    reserved_keys = {
+        "doc_id",
+        "candidate_id",
+        "query_id",
+        "author_id",
+        "lang",
+        "genre",
+        "source",
+        "token_length",
+        "content",
+        "text",
+        "raw_id",
+    }
+    metadata = {
+        key: value
+        for key, value in row.items()
+        if key not in reserved_keys
+    }
     return ProcessedDocument(
         raw_id=raw_id,
         doc_id=doc_id,
@@ -239,6 +257,7 @@ def _row_to_processed_doc(
         genre=genre,
         token_length=token_len,
         length_bucket=length_bucket(token_len),
+        metadata=metadata,
     )
 
 
@@ -291,6 +310,11 @@ def _read_stage_documents(base_dir: Path) -> list[ProcessedDocument]:
                 doc = _row_to_processed_doc(row, split=split)
                 if doc is None:
                     continue
+                doc.metadata = {
+                    **doc.metadata,
+                    "input_split": split,
+                    "input_doc_type": "candidate",
+                }
                 key = _dedup_key(doc, split)
                 if key in seen_keys:
                     continue
@@ -312,6 +336,11 @@ def _read_stage_documents(base_dir: Path) -> list[ProcessedDocument]:
                 if doc is None:
                     skipped_missing_author += 1
                     continue
+                doc.metadata = {
+                    **doc.metadata,
+                    "input_split": split,
+                    "input_doc_type": "query",
+                }
                 key = _dedup_key(doc, split)
                 if key in seen_keys:
                     continue
@@ -550,15 +579,121 @@ def write_outputs(
     splits: dict[str, list[ProcessedDocument]],
     output_dir: Path,
     rng: random.Random,
+    *,
+    retain_all_docs: bool = False,
+    write_documents_jsonl: bool = False,
+    metadata_fields: tuple[str, ...] = (),
 ) -> dict:
     output_dir.mkdir(parents=True, exist_ok=True)
     split_summary = {}
+
+    def _doc_payload(
+        doc: ProcessedDocument,
+        *,
+        id_key: str,
+        include_author_id: bool,
+        retrieval_role: str | None = None,
+    ) -> dict:
+        row = {
+            id_key: doc.doc_id,
+            "lang": doc.lang,
+            "genre": doc.genre,
+            "content": doc.text,
+            "source": doc.source,
+            "token_length": doc.token_length,
+        }
+        if include_author_id:
+            row["author_id"] = doc.author_id
+        if retrieval_role is not None:
+            row["retrieval_role"] = retrieval_role
+        for field in metadata_fields:
+            value = doc.metadata.get(field)
+            if value is not None:
+                row[field] = value
+        return row
+
     for split_name, docs in splits.items():
-        candidates, queries, ground_truth = build_retrieval_sets(docs, rng)
+        if retain_all_docs:
+            candidates = []
+            queries = []
+            ground_truth = []
+            role_by_doc_id: dict[str, str] = {}
+            docs_by_author: dict[str, list[ProcessedDocument]] = defaultdict(list)
+            for doc in docs:
+                docs_by_author[doc.author_id].append(doc)
+
+            for author_id, author_docs in docs_by_author.items():
+                ordered = sorted(author_docs, key=lambda d: (d.lang, d.source, d.raw_id))
+                ordered = deterministic_shuffle(ordered, rng)
+
+                if len(ordered) == 1:
+                    candidate_pool = ordered
+                    query_pool: list[ProcessedDocument] = []
+                else:
+                    candidate_count = (len(ordered) + 1) // 2
+                    if candidate_count >= len(ordered):
+                        candidate_count = len(ordered) - 1
+                    candidate_pool = ordered[:candidate_count]
+                    query_pool = ordered[candidate_count:]
+
+                candidate_ids: list[str] = []
+                for doc in candidate_pool:
+                    role_by_doc_id[str(doc.doc_id)] = "candidate"
+                    candidates.append(
+                        _doc_payload(
+                            doc,
+                            id_key="candidate_id",
+                            include_author_id=True,
+                            retrieval_role="candidate",
+                        )
+                    )
+                    candidate_ids.append(str(doc.doc_id))
+
+                for doc in query_pool:
+                    role_by_doc_id[str(doc.doc_id)] = "query"
+                    queries.append(
+                        _doc_payload(
+                            doc,
+                            id_key="query_id",
+                            include_author_id=False,
+                            retrieval_role="query",
+                        )
+                    )
+                    ground_truth.append(
+                        {
+                            "query_id": doc.doc_id,
+                            "positive_ids": candidate_ids,
+                            "author_id": author_id,
+                        }
+                    )
+        else:
+            candidates, queries, ground_truth = build_retrieval_sets(docs, rng)
+            role_by_doc_id = {
+                str(row["candidate_id"]): "candidate"
+                for row in candidates
+            }
+            role_by_doc_id.update(
+                {
+                    str(row["query_id"]): "query"
+                    for row in queries
+                }
+            )
+
         split_path = output_dir / split_name
         write_jsonl(split_path / "candidates.jsonl", candidates)
         write_jsonl(split_path / "queries.jsonl", queries)
         write_jsonl(split_path / "ground_truth.jsonl", ground_truth)
+        if write_documents_jsonl:
+            documents_rows = [
+                _doc_payload(
+                    doc,
+                    id_key="doc_id",
+                    include_author_id=True,
+                    retrieval_role=role_by_doc_id.get(str(doc.doc_id)),
+                )
+                for doc in docs
+            ]
+            write_jsonl(split_path / "documents.jsonl", documents_rows)
         split_summary[split_name] = {
             "documents": len(docs),
             "candidates": len(candidates),
@@ -567,6 +702,7 @@ def write_outputs(
             "documents_by_lang": Counter(doc.lang for doc in docs),
             "candidates_by_lang": Counter(doc["lang"] for doc in candidates),
             "queries_by_lang": Counter(doc["lang"] for doc in queries),
+            "documents_written": write_documents_jsonl,
         }
     return split_summary
 

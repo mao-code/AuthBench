@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from typing import Any, Callable, TypeVar
 
-from transformers import AutoModel, AutoTokenizer
+from transformers import AutoModel, AutoModelForCausalLM, AutoTokenizer
 
 T = TypeVar("T")
 
@@ -101,5 +101,23 @@ def load_model(
         allow_remote_code_fallback=allow_remote_code_fallback,
         supports_safetensors=True,
         component_label="Model",
+        **kwargs,
+    )
+
+
+def load_causal_lm_model(
+    model_name_or_path: str,
+    *,
+    trust_remote_code: bool = False,
+    allow_remote_code_fallback: bool = True,
+    **kwargs: Any,
+):
+    return _load_with_remote_code_retry(
+        AutoModelForCausalLM.from_pretrained,
+        model_name_or_path,
+        trust_remote_code=trust_remote_code,
+        allow_remote_code_fallback=allow_remote_code_fallback,
+        supports_safetensors=True,
+        component_label="Causal LM",
         **kwargs,
     )

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 import random
-from collections import defaultdict
+from collections import Counter, defaultdict
 from typing import Iterable
 
 from .types import ProcessedDocument, SamplingTargets, SplitRatios
@@ -288,6 +288,65 @@ def split_by_language(
                 if take > 0:
                     splits[split_name].extend(shuffled[cursor : cursor + take])
                     cursor += take
+
+    return splits
+
+
+def split_by_author_language(
+    docs: Iterable[ProcessedDocument],
+    split_ratios: SplitRatios,
+    rng: random.Random | None = None,
+):
+    """
+    Keep each author in a single split while approximately preserving
+    per-language document ratios across train/dev/test.
+    """
+
+    rng = rng or random.Random(13)
+    split_order = split_ratios.as_list()
+    split_names = [name for name, _ in split_order]
+    split_index = {name: idx for idx, (name, _) in enumerate(split_order)}
+    splits = {name: [] for name in split_names}
+
+    docs_by_author = defaultdict(list)
+    for doc in docs:
+        docs_by_author[doc.author_id].append(doc)
+
+    authors_by_lang: dict[str, list[tuple[str, list[ProcessedDocument]]]] = defaultdict(list)
+    for author_id, author_docs in docs_by_author.items():
+        lang_counts = Counter(doc.lang for doc in author_docs)
+        dominant_lang = sorted(lang_counts.items(), key=lambda kv: (-kv[1], kv[0]))[0][0]
+        ordered_docs = sorted(author_docs, key=lambda d: (d.lang, d.source, d.raw_id))
+        authors_by_lang[dominant_lang].append((author_id, ordered_docs))
+
+    for lang, author_groups in sorted(authors_by_lang.items()):
+        author_groups = deterministic_shuffle(author_groups, rng)
+        author_groups.sort(key=lambda item: (-len(item[1]), item[0]))
+
+        total_docs = sum(len(group_docs) for _, group_docs in author_groups)
+        target_counts = _split_counts(total_docs, split_order)
+        current_counts = {name: 0 for name in split_names}
+
+        for author_id, author_docs in author_groups:
+            del author_id
+            chosen_split = max(
+                split_names,
+                key=lambda name: (
+                    target_counts[name] - current_counts[name],
+                    -current_counts[name],
+                    -split_index[name],
+                ),
+            )
+            splits[chosen_split].extend(author_docs)
+            current_counts[chosen_split] += len(author_docs)
+
+        logger.info(
+            "Author-aware split for lang=%s total_docs=%d targets=%s realized=%s",
+            lang,
+            total_docs,
+            target_counts,
+            current_counts,
+        )
 
     return splits
 

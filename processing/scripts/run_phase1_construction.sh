@@ -1,10 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-# cd "$ROOT_DIR"
-
-ROOT_DIR="${ROOT_DIR:-/home/mh2653/AuthBench}"
+ROOT_DIR="${ROOT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
 export PYTHONPATH="${ROOT_DIR}"
 # sbatch -p rush --nodelist=rush-compute-01 --gres=gpu:1 --ntasks=1 --cpus-per-task=4 --mem=64G -t 720:00:00 processing/scripts/run_phase1_construction.sh
 
@@ -13,8 +10,10 @@ MANIFEST_PATH="${MANIFEST_PATH:-processing/datasets_manifest.json}"
 RUN_TAG="${RUN_TAG:-phase1_official}"
 
 TOTAL_DOCS="${TOTAL_DOCS:-300000}"
-POST_TARGET_TOTAL="${POST_TARGET_TOTAL:-}"
+POST_TARGET_TOTAL="${POST_TARGET_TOTAL:-$TOTAL_DOCS}"
 SEED="${SEED:-42}"
+SANITY_CHECK="${SANITY_CHECK:-0}"
+SANITY_LIMIT="${SANITY_LIMIT:-2000}"
 
 MAX_DOCUMENTS_PER_DATASET="${MAX_DOCUMENTS_PER_DATASET:-10000000}"
 SHUFFLE_BUFFER_SIZE="${SHUFFLE_BUFFER_SIZE:-10000}"
@@ -51,6 +50,10 @@ CMD=(
 
 if [[ "$ALLOW_OTHER_LANGUAGES" == "1" ]]; then
   CMD+=(--allow-other-languages)
+fi
+
+if [[ "$SANITY_CHECK" == "1" ]]; then
+  CMD+=(--sanity-check --sanity-limit "$SANITY_LIMIT")
 fi
 
 if [[ -n "$POST_TARGET_TOTAL" ]]; then

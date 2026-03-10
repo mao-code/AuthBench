@@ -17,14 +17,14 @@ from .config import make_split_ratios
 from .deduplication import DedupConfig, deduplicate_documents
 from .language_audit import LanguageAuditConfig, run_language_audit
 from .postprocess import _read_stage_documents, compute_language_targets, sample_documents, write_outputs
-from .sampling import assign_document_ids, split_by_language
+from .sampling import assign_document_ids, split_by_author_language
 from .types import ProcessedDocument
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_PHASE1_DIR = Path("processing/outputs/official_ttl300k_cap10M_sf10k_postprocessed_balanced")
+DEFAULT_PHASE1_DIR = Path("processing/outputs/pipeline_phase1_official")
 DEFAULT_PHASE2_DIR = Path("processing/second_phase_web_crawling/outputs/pipeline_all4_t300k_cap10M")
-DEFAULT_COMBINED_OUTPUT_DIR = Path("processing/outputs/combined_phase1_official_phase2_webcrawl")
+DEFAULT_COMBINED_OUTPUT_DIR = Path("processing/outputs/combined_phase1_official_phase2_all4_all_docs")
 
 
 def _sorted_counter(counter: Counter) -> dict[str, int]:
@@ -311,13 +311,20 @@ def run(args: argparse.Namespace) -> dict:
     combined_docs = assign_document_ids(combined_docs, prefix="mix")
 
     split_ratios = make_split_ratios(train_ratio, dev_ratio, test_ratio)
-    splits = split_by_language(
+    splits = split_by_author_language(
         combined_docs,
         split_ratios=split_ratios,
         rng=rng,
     )
 
-    split_summary = write_outputs(splits, args.output_dir, rng)
+    split_summary = write_outputs(
+        splits,
+        args.output_dir,
+        rng,
+        retain_all_docs=True,
+        write_documents_jsonl=True,
+        metadata_fields=("phase", "input_split", "input_doc_type"),
+    )
     split_summary = {
         split: {
             **details,
@@ -353,6 +360,9 @@ def run(args: argparse.Namespace) -> dict:
             "disable_cross_phase_overlap_removal": args.disable_cross_phase_overlap_removal,
             "seed": args.seed,
             "ratios": {"train": train_ratio, "dev": dev_ratio, "test": test_ratio},
+            "preserve_all_selected_docs_in_output": True,
+            "write_documents_jsonl": True,
+            "author_aware_split": True,
         },
         "stage_counts": {
             "phase1_loaded": phase1_loaded_count,
@@ -367,6 +377,9 @@ def run(args: argparse.Namespace) -> dict:
             "phase2_selected": len(phase2_selected),
             "combined_selected": len(combined_docs),
             "phase2_share_final": phase2_share,
+            "combined_exported_documents": sum(details["documents"] for details in split_summary.values()),
+            "combined_exported_candidates": sum(details["candidates"] for details in split_summary.values()),
+            "combined_exported_queries": sum(details["queries"] for details in split_summary.values()),
         },
         "phase1_dedup": phase1_dedup_summary,
         "phase2_dedup": phase2_dedup_summary,
