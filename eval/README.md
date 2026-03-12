@@ -99,6 +99,34 @@ python -m AuthBench.eval.runner \
   --self-consistency-max-new-tokens 96
 ```
 
+## LLM Embedding Flow
+
+For causal LLM checkpoints used through `embedder.py`, the normal embedding path does
+not autoregressively generate output tokens. The flow is:
+
+1. Tokenize the input text.
+2. Run one forward pass through the model.
+3. Read the final `last_hidden_state` tensor with shape `(batch_size, seq_len, hidden_dim)`.
+4. Pool across the token dimension to get one vector per document.
+5. Normalize the pooled vector before scoring.
+
+With the default `--pooling mean`, the document embedding is the mean over the
+non-padding token hidden states. Other supported pooling choices are `cls` and `last`.
+
+For `--self-consistency`, the flow is different and does require autoregressive
+generation:
+
+1. Prompt the LLM to write a short authorship style profile for the document.
+2. Sample `N` style profiles with top-k / temperature decoding.
+3. Decode the generated continuation tokens into text.
+4. Re-tokenize each generated style profile and run a standard forward pass.
+5. Pool each generated profile into one embedding.
+6. Compare query profile embedding `i` only against candidate profile embedding `i`.
+7. Sum the per-sample query-candidate similarity scores and rerank with that summed score.
+
+`--self-consistency-include-original` optionally appends one direct embedding of the
+original document as an extra term in that summed-score aggregation.
+
 TF-IDF baseline (cosine on TF-IDF vectors) is available via the dedicated runner:
 
 ```bash
