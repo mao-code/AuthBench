@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Sweep causal LLMs with baseline + self-consistency evaluation and write comparison summaries.
+# Sweep causal LLMs with baseline + score-aggregated self-consistency evaluation and write comparison summaries.
 # Run from the repository root (AuthBench).
 set -euo pipefail
 
@@ -17,7 +17,6 @@ DEFAULT_MODEL_LIST=(
   llama3-8b
   llama3-8b-instruct
   deepseek-llm-7b-base
-  deepseek-coder-6.7b-instruct
 )
 
 if [[ $# -gt 0 ]]; then

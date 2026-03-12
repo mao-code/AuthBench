@@ -77,6 +77,8 @@ def main() -> int:
         "model": baseline_model,
         "baseline_file": str(args.baseline),
         "self_consistency_file": str(args.self_consistency),
+        "baseline_details": baseline_result.get("self_consistency"),
+        "self_consistency_details": self_consistency_result.get("self_consistency"),
         "metrics": comparison_metrics,
     }
     args.output.parent.mkdir(parents=True, exist_ok=True)

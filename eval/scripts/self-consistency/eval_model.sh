@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Run baseline and self-consistency evaluation for a single causal LLM model.
+# Run baseline and score-aggregated self-consistency evaluation for a single causal LLM model.
 # Usage: eval/scripts/self-consistency/eval_model.sh <model-name>
 set -euo pipefail
 

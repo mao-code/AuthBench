@@ -23,6 +23,7 @@ def main() -> int:
     for path in comparison_files:
         payload = json.loads(path.read_text(encoding="utf-8"))
         model = payload["model"]
+        self_consistency_details = payload.get("self_consistency_details") or {}
         for metric_name, metric_payload in payload.get("metrics", {}).items():
             row = {
                 "model": model,
@@ -32,6 +33,9 @@ def main() -> int:
                 "delta": metric_payload.get("delta"),
                 "improved": metric_payload.get("improved"),
                 "direction": metric_payload.get("direction"),
+                "aggregation_strategy": self_consistency_details.get("aggregation_strategy"),
+                "total_votes": self_consistency_details.get("total_votes"),
+                "include_original": self_consistency_details.get("include_original"),
                 "comparison_file": str(path),
             }
             rows.append(row)
@@ -50,6 +54,9 @@ def main() -> int:
                 "delta",
                 "improved",
                 "direction",
+                "aggregation_strategy",
+                "total_votes",
+                "include_original",
                 "comparison_file",
             ],
         )
