@@ -1,0 +1,548 @@
+{
+  "tfidf": {
+    "attribution": {
+      "eer": 0.23265875114166226,
+      "roc_auc": 0.8230835262840823,
+      "num_queries": 20131,
+      "positive_pairs": 20803,
+      "negative_pairs": 1006550,
+      "negatives_per_query": 50,
+      "negative_strategy": "sample",
+      "num_candidates": 20804,
+      "by_language": {
+        "ar": {
+          "eer": 0.12772804988434075,
+          "roc_auc": 0.915240569766559,
+          "num_queries": 1951,
+          "positive_pairs": 1951,
+          "negative_pairs": 97550
+        },
+        "zh": {
+          "eer": 0.37359333517825155,
+          "roc_auc": 0.7004689373400789,
+          "num_queries": 2183,
+          "positive_pairs": 2718,
+          "negative_pairs": 109150
+        },
+        "fr": {
+          "eer": 0.20049099836333878,
+          "roc_auc": 0.8785939580146844,
+          "num_queries": 1222,
+          "positive_pairs": 1222,
+          "negative_pairs": 61100
+        },
+        "en": {
+          "eer": 0.22337051237364935,
+          "roc_auc": 0.8577150471883148,
+          "num_queries": 5738,
+          "positive_pairs": 5740,
+          "negative_pairs": 286900
+        },
+        "de": {
+          "eer": 0.17742908871454435,
+          "roc_auc": 0.9003718829318679,
+          "num_queries": 1657,
+          "positive_pairs": 1657,
+          "negative_pairs": 82850
+        },
+        "ko": {
+          "eer": 0.34544391468243596,
+          "roc_auc": 0.7347558920407757,
+          "num_queries": 1677,
+          "positive_pairs": 1680,
+          "negative_pairs": 83850
+        },
+        "es": {
+          "eer": 0.17237864077669904,
+          "roc_auc": 0.9012858260085777,
+          "num_queries": 1648,
+          "positive_pairs": 1648,
+          "negative_pairs": 82400
+        },
+        "ja": {
+          "eer": 0.35644256205926134,
+          "roc_auc": 0.7222632058287796,
+          "num_queries": 1098,
+          "positive_pairs": 1100,
+          "negative_pairs": 54900
+        },
+        "hi": {
+          "eer": 0.0943952802359882,
+          "roc_auc": 0.9418120273927306,
+          "num_queries": 339,
+          "positive_pairs": 339,
+          "negative_pairs": 16950
+        },
+        "ru": {
+          "eer": 0.13381970970206264,
+          "roc_auc": 0.8915808913879169,
+          "num_queries": 2618,
+          "positive_pairs": 2748,
+          "negative_pairs": 130900
+        }
+      },
+      "by_genre": {
+        "social_media/sports": {
+          "eer": 0.1954861111111111,
+          "roc_auc": 0.8783449273283611,
+          "num_queries": 576,
+          "positive_pairs": 581,
+          "negative_pairs": 28800
+        },
+        "social_media/youtube_comment": {
+          "eer": 0.2575164250434248,
+          "roc_auc": 0.8030153787109728,
+          "num_queries": 5730,
+          "positive_pairs": 5766,
+          "negative_pairs": 286500
+        },
+        "social_media/technology": {
+          "eer": 0.26962025316455696,
+          "roc_auc": 0.787670522997706,
+          "num_queries": 767,
+          "positive_pairs": 790,
+          "negative_pairs": 38350
+        },
+        "news": {
+          "eer": 0.2047535383113714,
+          "roc_auc": 0.8680724350895445,
+          "num_queries": 4098,
+          "positive_pairs": 4267,
+          "negative_pairs": 204900
+        },
+        "social_media/people": {
+          "eer": 0.28522497308462325,
+          "roc_auc": 0.7743221472588647,
+          "num_queries": 1251,
+          "positive_pairs": 1286,
+          "negative_pairs": 62550
+        },
+        "social_media/environment": {
+          "eer": 0.31497885737214115,
+          "roc_auc": 0.7530873808462862,
+          "num_queries": 471,
+          "positive_pairs": 486,
+          "negative_pairs": 23550
+        },
+        "social_media/entertainment": {
+          "eer": 0.24642379182156135,
+          "roc_auc": 0.807745365308453,
+          "num_queries": 1345,
+          "positive_pairs": 1377,
+          "negative_pairs": 67250
+        },
+        "social_media/law": {
+          "eer": 0.2496,
+          "roc_auc": 0.8161329230769231,
+          "num_queries": 125,
+          "positive_pairs": 130,
+          "negative_pairs": 6250
+        },
+        "social_media/politics": {
+          "eer": 0.22409638554216868,
+          "roc_auc": 0.8360533424288328,
+          "num_queries": 1201,
+          "positive_pairs": 1245,
+          "negative_pairs": 60050
+        },
+        "social_media/social": {
+          "eer": 0.26519659338912815,
+          "roc_auc": 0.7930676878827541,
+          "num_queries": 421,
+          "positive_pairs": 441,
+          "negative_pairs": 21050
+        },
+        "social_media/science": {
+          "eer": 0.21428571428571427,
+          "roc_auc": 0.8408278388278388,
+          "num_queries": 325,
+          "positive_pairs": 336,
+          "negative_pairs": 16250
+        },
+        "social_media/health": {
+          "eer": 0.2829378025862611,
+          "roc_auc": 0.7723935185185186,
+          "num_queries": 360,
+          "positive_pairs": 372,
+          "negative_pairs": 18000
+        },
+        "social_media/finance": {
+          "eer": 0.26737967914438504,
+          "roc_auc": 0.7875336428277605,
+          "num_queries": 182,
+          "positive_pairs": 187,
+          "negative_pairs": 9100
+        },
+        "social_media/investing": {
+          "eer": 0.2898550724637681,
+          "roc_auc": 0.775736900780379,
+          "num_queries": 130,
+          "positive_pairs": 138,
+          "negative_pairs": 6500
+        },
+        "social_media/economy": {
+          "eer": 0.28023405712444105,
+          "roc_auc": 0.781213215623328,
+          "num_queries": 168,
+          "positive_pairs": 178,
+          "negative_pairs": 8400
+        },
+        "literature": {
+          "eer": 0.20442477876106194,
+          "roc_auc": 0.8612980496606237,
+          "num_queries": 927,
+          "positive_pairs": 1130,
+          "negative_pairs": 46350
+        },
+        "social_media/business": {
+          "eer": 0.23294117647058823,
+          "roc_auc": 0.8305607888316617,
+          "num_queries": 238,
+          "positive_pairs": 248,
+          "negative_pairs": 11900
+        },
+        "social_media/cryptocurrency": {
+          "eer": 0.23931623931623933,
+          "roc_auc": 0.8249114071336293,
+          "num_queries": 333,
+          "positive_pairs": 351,
+          "negative_pairs": 16650
+        },
+        "blog/indunk": {
+          "eer": 0.1336206896551724,
+          "roc_auc": 0.9313232015457789,
+          "num_queries": 464,
+          "positive_pairs": 464,
+          "negative_pairs": 23200
+        },
+        "blog/student": {
+          "eer": 0.17888563049853373,
+          "roc_auc": 0.9046922541085818,
+          "num_queries": 341,
+          "positive_pairs": 341,
+          "negative_pairs": 17050
+        },
+        "blog/marketing": {
+          "eer": 0.12,
+          "roc_auc": 0.9430555555555555,
+          "num_queries": 12,
+          "positive_pairs": 12,
+          "negative_pairs": 600
+        },
+        "blog/technology": {
+          "eer": 0.15384615384615385,
+          "roc_auc": 0.9226319526627219,
+          "num_queries": 65,
+          "positive_pairs": 65,
+          "negative_pairs": 3250
+        },
+        "blog/communications-media": {
+          "eer": 0.14285714285714285,
+          "roc_auc": 0.9128698979591837,
+          "num_queries": 28,
+          "positive_pairs": 28,
+          "negative_pairs": 1400
+        },
+        "blog/education": {
+          "eer": 0.13391304347826086,
+          "roc_auc": 0.9292249527410208,
+          "num_queries": 69,
+          "positive_pairs": 69,
+          "negative_pairs": 3450
+        },
+        "literature/speech_essay": {
+          "eer": 0.15,
+          "roc_auc": 0.909625,
+          "num_queries": 16,
+          "positive_pairs": 20,
+          "negative_pairs": 800
+        },
+        "blog/publishing": {
+          "eer": 0.21555555555555556,
+          "roc_auc": 0.928641975308642,
+          "num_queries": 9,
+          "positive_pairs": 9,
+          "negative_pairs": 450
+        },
+        "blog/engineering": {
+          "eer": 0.15384615384615385,
+          "roc_auc": 0.9472485207100592,
+          "num_queries": 26,
+          "positive_pairs": 26,
+          "negative_pairs": 1300
+        },
+        "blog/humanresources": {
+          "eer": 0.2,
+          "roc_auc": 0.8962,
+          "num_queries": 10,
+          "positive_pairs": 10,
+          "negative_pairs": 500
+        },
+        "blog/advertising": {
+          "eer": 0.2222222222222222,
+          "roc_auc": 0.8528395061728395,
+          "num_queries": 9,
+          "positive_pairs": 9,
+          "negative_pairs": 450
+        },
+        "qna/question": {
+          "eer": 0.07947019867549669,
+          "roc_auc": 0.9789792494481236,
+          "num_queries": 150,
+          "positive_pairs": 151,
+          "negative_pairs": 7500
+        },
+        "blog/non-profit": {
+          "eer": 0.1623529411764706,
+          "roc_auc": 0.9310726643598616,
+          "num_queries": 17,
+          "positive_pairs": 17,
+          "negative_pairs": 850
+        },
+        "blog/law": {
+          "eer": 0.15789473684210525,
+          "roc_auc": 0.9284764542936288,
+          "num_queries": 19,
+          "positive_pairs": 19,
+          "negative_pairs": 950
+        },
+        "blog/businessservices": {
+          "eer": 0.14666666666666667,
+          "roc_auc": 0.9297777777777778,
+          "num_queries": 15,
+          "positive_pairs": 15,
+          "negative_pairs": 750
+        },
+        "blog/transportation": {
+          "eer": 0.2222222222222222,
+          "roc_auc": 0.8607407407407407,
+          "num_queries": 9,
+          "positive_pairs": 9,
+          "negative_pairs": 450
+        },
+        "blog/religion": {
+          "eer": 0.1225,
+          "roc_auc": 0.9421875,
+          "num_queries": 8,
+          "positive_pairs": 8,
+          "negative_pairs": 400
+        },
+        "blog/consulting": {
+          "eer": 0.15466666666666667,
+          "roc_auc": 0.932,
+          "num_queries": 15,
+          "positive_pairs": 15,
+          "negative_pairs": 750
+        },
+        "blog/lawenforcement-security": {
+          "eer": 0.06,
+          "roc_auc": 0.9648,
+          "num_queries": 5,
+          "positive_pairs": 5,
+          "negative_pairs": 250
+        },
+        "blog/arts": {
+          "eer": 0.17777777777777778,
+          "roc_auc": 0.9073580246913581,
+          "num_queries": 45,
+          "positive_pairs": 45,
+          "negative_pairs": 2250
+        },
+        "blog/military": {
+          "eer": 0.142,
+          "roc_auc": 0.9428,
+          "num_queries": 10,
+          "positive_pairs": 10,
+          "negative_pairs": 500
+        },
+        "blog/sports-recreation": {
+          "eer": 0.015,
+          "roc_auc": 0.995,
+          "num_queries": 4,
+          "positive_pairs": 4,
+          "negative_pairs": 200
+        },
+        "blog/fashion": {
+          "eer": 0.10333333333333333,
+          "roc_auc": 0.97,
+          "num_queries": 6,
+          "positive_pairs": 6,
+          "negative_pairs": 300
+        },
+        "blog/construction": {
+          "eer": 0.12666666666666668,
+          "roc_auc": 0.9333333333333333,
+          "num_queries": 3,
+          "positive_pairs": 3,
+          "negative_pairs": 150
+        },
+        "blog/science": {
+          "eer": 0.2057142857142857,
+          "roc_auc": 0.9012244897959184,
+          "num_queries": 14,
+          "positive_pairs": 14,
+          "negative_pairs": 700
+        },
+        "blog/tourism": {
+          "eer": 0.13714285714285715,
+          "roc_auc": 0.9440816326530612,
+          "num_queries": 7,
+          "positive_pairs": 7,
+          "negative_pairs": 350
+        },
+        "blog/museums-libraries": {
+          "eer": 0.0,
+          "roc_auc": 1.0,
+          "num_queries": 2,
+          "positive_pairs": 2,
+          "negative_pairs": 100
+        },
+        "blog/chemicals": {
+          "eer": 0.07333333333333333,
+          "roc_auc": 0.9688888888888889,
+          "num_queries": 3,
+          "positive_pairs": 3,
+          "negative_pairs": 150
+        },
+        "blog/internet": {
+          "eer": 0.20857142857142857,
+          "roc_auc": 0.8856122448979592,
+          "num_queries": 14,
+          "positive_pairs": 14,
+          "negative_pairs": 700
+        },
+        "blog/banking": {
+          "eer": 0.11142857142857143,
+          "roc_auc": 0.9514285714285714,
+          "num_queries": 7,
+          "positive_pairs": 7,
+          "negative_pairs": 350
+        },
+        "blog/government": {
+          "eer": 0.11052631578947368,
+          "roc_auc": 0.9611634349030471,
+          "num_queries": 19,
+          "positive_pairs": 19,
+          "negative_pairs": 950
+        },
+        "blog/realestate": {
+          "eer": 0.03,
+          "roc_auc": 0.985,
+          "num_queries": 2,
+          "positive_pairs": 2,
+          "negative_pairs": 100
+        },
+        "blog/manufacturing": {
+          "eer": 0.125,
+          "roc_auc": 0.94875,
+          "num_queries": 8,
+          "positive_pairs": 8,
+          "negative_pairs": 400
+        },
+        "blog/biotech": {
+          "eer": 0.2,
+          "roc_auc": 0.8888,
+          "num_queries": 5,
+          "positive_pairs": 5,
+          "negative_pairs": 250
+        },
+        "blog/telecommunications": {
+          "eer": 0.16666666666666666,
+          "roc_auc": 0.9088888888888889,
+          "num_queries": 6,
+          "positive_pairs": 6,
+          "negative_pairs": 300
+        },
+        "literature/drama": {
+          "eer": 0.0,
+          "roc_auc": 1.0,
+          "num_queries": 1,
+          "positive_pairs": 1,
+          "negative_pairs": 50
+        },
+        "blog/accounting": {
+          "eer": 0.1275,
+          "roc_auc": 0.9215625,
+          "num_queries": 8,
+          "positive_pairs": 8,
+          "negative_pairs": 400
+        },
+        "blog/investmentbanking": {
+          "eer": 0.19,
+          "roc_auc": 0.90375,
+          "num_queries": 4,
+          "positive_pairs": 4,
+          "negative_pairs": 200
+        },
+        "blog/architecture": {
+          "eer": 0.055,
+          "roc_auc": 0.98625,
+          "num_queries": 4,
+          "positive_pairs": 4,
+          "negative_pairs": 200
+        },
+        "poetry": {
+          "eer": 0.14814814814814814,
+          "roc_auc": 0.9013227513227513,
+          "num_queries": 21,
+          "positive_pairs": 27,
+          "negative_pairs": 1050
+        },
+        "blog/automotive": {
+          "eer": 0.0,
+          "roc_auc": 1.0,
+          "num_queries": 1,
+          "positive_pairs": 1,
+          "negative_pairs": 50
+        },
+        "blog/agriculture": {
+          "eer": 0.16,
+          "roc_auc": 0.84,
+          "num_queries": 1,
+          "positive_pairs": 1,
+          "negative_pairs": 50
+        },
+        "blog/environment": {
+          "eer": 0.08,
+          "roc_auc": 0.92,
+          "num_queries": 1,
+          "positive_pairs": 1,
+          "negative_pairs": 50
+        }
+      },
+      "by_length_bucket": {
+        "medium": {
+          "eer": 0.23626913892400617,
+          "roc_auc": 0.8196252314608208,
+          "num_queries": 13966,
+          "positive_pairs": 14238,
+          "negative_pairs": 698300
+        },
+        "long": {
+          "eer": 0.18469431380932022,
+          "roc_auc": 0.8737921095005194,
+          "num_queries": 4338,
+          "positive_pairs": 4678,
+          "negative_pairs": 216900
+        },
+        "short": {
+          "eer": 0.3648587238916431,
+          "roc_auc": 0.6863338507007696,
+          "num_queries": 1454,
+          "positive_pairs": 1480,
+          "negative_pairs": 72700
+        },
+        "extra_long": {
+          "eer": 0.22284182305630026,
+          "roc_auc": 0.8795408106131967,
+          "num_queries": 373,
+          "positive_pairs": 407,
+          "negative_pairs": 18650
+        }
+      }
+    },
+    "baseline": {
+      "implementation": "existing_tfidf_char_wb_3_5"
+    }
+  }
+}

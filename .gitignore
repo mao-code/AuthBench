@@ -14,10 +14,10 @@ venv/
 
 # raw_analysis/*/data/*
 */outputs/*
-eval/results/
+# eval/results/
 wandb/
 
-**/outputs/**
+# **/outputs/**
 
 **/downloads/**
 **/corpora/**
