@@ -538,7 +538,10 @@ def exact_duplicate_analysis(docs: pd.DataFrame, out_dir: Path) -> dict:
         save_csv(flag_summary, out_dir / "exact_duplicate_flag_summary.csv")
 
         plt.figure(figsize=(8, 5))
-        sns.barplot(data=flag_summary, x="flag", y="groups", hue="flag", dodge=False, legend=False)
+        ax = sns.barplot(data=flag_summary, x="flag", y="groups", hue="flag", dodge=False)
+        legend = ax.get_legend()
+        if legend is not None:
+            legend.remove()
         plt.xticks(rotation=15, ha="right")
         plt.ylabel("Duplicate groups")
         plt.xlabel("")

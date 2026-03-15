@@ -45,6 +45,13 @@ PY
   echo "EXACT_50_50 enabled: auto-set TOTAL_DOCS=${TOTAL_DOCS} (2 * min(phase1, phase2))."
 fi
 
+# In full-pool merge mode, keep all surviving docs from both phases. The realized
+# phase-2 share is then determined by available pool sizes, so enforcing a 50/50
+# minimum would reject a correct merge when phase-2 is smaller.
+if [[ "$TAKE_ALL_DOCS" == "1" && "$ALLOW_LOWER_PHASE2_SHARE" != "1" ]]; then
+  ALLOW_LOWER_PHASE2_SHARE=1
+fi
+
 CMD=(
   "$PYTHON_BIN" -m processing.combine_phase_benchmarks
   --phase1-dir "$PHASE1_DIR"

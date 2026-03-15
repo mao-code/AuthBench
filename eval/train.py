@@ -135,7 +135,7 @@ def parse_args() -> argparse.Namespace:
         help="Candidate token batch size for late interaction scoring.",
     )
     parser.add_argument("--negatives-per-query", type=int, default=50)
-    parser.add_argument("--negative-strategy", choices=("sample", "all"), default="sample")
+    parser.add_argument("--negative-strategy", choices=("sample", "all"), default="all")
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument(
         "--lora-rank",

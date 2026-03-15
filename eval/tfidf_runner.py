@@ -30,7 +30,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--max-topic-candidates", type=int, default=None)
     parser.add_argument("--topic-seed", type=int, default=13)
     parser.add_argument("--negatives-per-query", type=int, default=50)
-    parser.add_argument("--negative-strategy", choices=("sample", "all"), default="sample")
+    parser.add_argument("--negative-strategy", choices=("sample", "all"), default="all")
     parser.add_argument("--analyzer", default="char_wb")
     parser.add_argument("--ngram-min", type=int, default=3)
     parser.add_argument("--ngram-max", type=int, default=5)

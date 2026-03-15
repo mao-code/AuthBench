@@ -84,21 +84,6 @@ python -m AuthBench.eval.runner \
   --max-topic-candidates 5000
 ```
 
-For generation-capable causal LLMs, you can enable self-consistency score aggregation:
-sample multiple style descriptions with top-k sampling, embed each sample separately,
-sum the per-sample query-candidate similarities, and rerank the full candidate pool:
-
-```bash
-python -m AuthBench.eval.runner \
-  --split test \
-  --models qwen2.5-3b-instruct \
-  --self-consistency \
-  --self-consistency-samples 4 \
-  --self-consistency-top-k 50 \
-  --self-consistency-temperature 0.8 \
-  --self-consistency-max-new-tokens 96
-```
-
 ## LLM Embedding Flow
 
 For causal LLM checkpoints used through `embedder.py`, the normal embedding path does
@@ -113,20 +98,6 @@ not autoregressively generate output tokens. The flow is:
 With the default `--pooling mean`, the document embedding is the mean over the
 non-padding token hidden states. Other supported pooling choices are `cls` and `last`.
 
-For `--self-consistency`, the flow is different and does require autoregressive
-generation:
-
-1. Prompt the LLM to write a short authorship style profile for the document.
-2. Sample `N` style profiles with top-k / temperature decoding.
-3. Decode the generated continuation tokens into text.
-4. Re-tokenize each generated style profile and run a standard forward pass.
-5. Pool each generated profile into one embedding.
-6. Compare query profile embedding `i` only against candidate profile embedding `i`.
-7. Sum the per-sample query-candidate similarity scores and rerank with that summed score.
-
-`--self-consistency-include-original` optionally appends one direct embedding of the
-original document as an extra term in that summed-score aggregation.
-
 TF-IDF baseline (cosine on TF-IDF vectors) is available via the dedicated runner:
 
 ```bash
@@ -135,6 +106,34 @@ python -m AuthBench.eval.tfidf_runner \
   --split test \
   --output-json eval/results/tfidf.json
 ```
+
+Additional non-transformer baselines are available via the shared baseline runner:
+
+- `tfidf` – existing character `3-5` gram TF-IDF cosine baseline.
+- `ngram` – hashed character/word n-gram stylometric features with a train-split logistic pair calibrator.
+- `ppm` – fixed-order hashed character language-model approximation of PPM-style cross-entropy scoring with a train-split logistic calibrator.
+
+Run one or more baselines directly:
+
+```bash
+python -m AuthBench.eval.baseline_runner \
+  --dataset-root processing/outputs/combined_phase1_phase2 \
+  --split test \
+  --baselines tfidf ngram ppm \
+  --output-json eval/results/baselines/all_baselines.json
+```
+
+Or use the shell wrapper that writes one JSON per baseline and defaults to the combined
+phase1+phase2 benchmark:
+
+```bash
+eval/scripts/eval_all_baselines.sh
+```
+
+Useful overrides for the shell wrapper:
+
+- `BASELINES="tfidf ppm"` to evaluate only a subset.
+- `OUTPUT_DIR=eval/results/baselines_topic CANDIDATE_POOL=topic MAX_TOPIC_CANDIDATES=5000` for topic-matched evaluation.
 
 Export metric tables from JSON results:
 
@@ -187,11 +186,6 @@ Useful flags:
 - `--candidate-chunk-size` to control candidate token batch size during late interaction.
 - Late interaction pads to `--max-length` to keep token tensors alignable; lower the
   length or subset queries/candidates if memory spikes.
-- `--self-consistency` to sample multiple style descriptions from supported causal LLMs
-  and sum/rerank the resulting per-sample retrieval scores instead of averaging vectors. Tune with `--self-consistency-samples`,
-  `--self-consistency-top-k`, `--self-consistency-temperature`, and
-  `--self-consistency-max-new-tokens`. Add `--self-consistency-include-original` if you
-  want to add the direct document embedding as one extra sampled embedding in the score sum.
 - `--wandb-project` (runner/train) to push metrics to Weights & Biases; combine with
   `--wandb-run-name/--wandb-entity/--wandb-tags` as needed.
 - `--eval-fraction-epoch` to trigger evals at a fraction of each epoch (e.g., 0.5 for mid-epoch) and
@@ -203,8 +197,5 @@ Scripts:
 - `eval/scripts/train_model.sh <model-name>` – run one model for 1 epoch with mid-epoch eval and LoRA (rank 16 by default; override with `LORA_RANK`). Results are written under `eval/results/training_summary/<model>/`.
 - `eval/scripts/train_all_models.sh` – train the default top-2 models per group (LLM-base, LLM-instruct, Embedding, Embedding-instruct) with LoRA rank 16. Override the list with `MODELS="m1 m2 ..."`.
 - `eval/scripts/eval_all_models.sh` – evaluate a broad set of embedding models (or override via `MODELS="m1 m2"`) and store per-model JSON outputs with fine-grained breakdowns for leaderboard building.
-- `eval/scripts/self-consistency/eval_model.sh <model-name>` – run one causal LLM with generation-based, summed-score self-consistency retrieval.
-- `eval/scripts/self-consistency/eval_all_llms.sh` – sweep the registry’s supported causal LLMs with the same self-consistency settings.
-
 Checkpoints are saved under `--output-dir/<model>` with a `training_summary.json` that
 captures the final dev/test metrics for quick comparison to pre-trained baselines.

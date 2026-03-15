@@ -10,7 +10,12 @@ import numpy as np
 import torch
 
 from AuthBench.eval.data import AuthBenchSplit
-from AuthBench.eval.metrics import aggregate_ranking_metrics, compute_eer, ranking_metrics_for_query
+from AuthBench.eval.metrics import (
+    aggregate_ranking_metrics,
+    compute_eer,
+    compute_roc_auc,
+    ranking_metrics_for_query,
+)
 from AuthBench.eval.pools import build_topic_candidate_index, build_topic_pool
 
 
@@ -142,14 +147,14 @@ def evaluate_tfidf_representation(
         build_topic_candidate_index(working.candidates) if candidate_pool == "topic" else None
     )
 
-    for idx, query_record in enumerate(working.queries):
-        query_id = query_record["query_id"]
-        positives = working.positives_by_query.get(query_id, [])
-        pos_indices = [candidate_index[cid] for cid in positives if cid in candidate_index]
-        if not pos_indices:
-            continue
+    if candidate_pool == "topic":
+        for idx, query_record in enumerate(working.queries):
+            query_id = query_record["query_id"]
+            positives = working.positives_by_query.get(query_id, [])
+            pos_indices = [candidate_index[cid] for cid in positives if cid in candidate_index]
+            if not pos_indices:
+                continue
 
-        if candidate_pool == "topic":
             pool_indices = build_topic_pool(
                 query_record=query_record,
                 query_id=query_id,
@@ -169,25 +174,43 @@ def evaluate_tfidf_representation(
             scores = np.asarray(scores.toarray()).ravel()
             metrics = ranking_metrics_for_query(torch.from_numpy(scores).float(), pool_pos_indices, ks)
             pool_size = len(pool_indices)
-        else:
-            scores = query_matrix[idx].dot(candidate_matrix.T)
-            scores = np.asarray(scores.toarray()).ravel()
-            metrics = ranking_metrics_for_query(torch.from_numpy(scores).float(), pos_indices, ks)
-            pool_size = len(candidate_ids)
 
-        metrics_per_query.append(metrics)
-        lang = _clean_label(query_record.get("lang") or query_record.get("language"))
-        genre = _clean_label(query_record.get("genre"))
-        length_bucket = _length_bucket_from_record(query_record)
-        per_lang[lang].append(metrics)
-        per_genre[genre].append(metrics)
-        per_length[length_bucket].append(metrics)
-
-        if candidate_pool == "topic":
+            metrics_per_query.append(metrics)
+            lang = _clean_label(query_record.get("lang") or query_record.get("language"))
+            genre = _clean_label(query_record.get("genre"))
+            length_bucket = _length_bucket_from_record(query_record)
+            per_lang[lang].append(metrics)
+            per_genre[genre].append(metrics)
+            per_length[length_bucket].append(metrics)
             candidate_counts.append(pool_size)
             per_lang_counts[lang].append(pool_size)
             per_genre_counts[genre].append(pool_size)
             per_length_counts[length_bucket].append(pool_size)
+    else:
+        batch_size = 256
+        for start in range(0, len(working.queries), batch_size):
+            end = min(start + batch_size, len(working.queries))
+            score_matrix = query_matrix[start:end].dot(candidate_matrix.T)
+            score_matrix = np.asarray(score_matrix.toarray(), dtype=np.float32)
+            for row, idx in enumerate(range(start, end)):
+                query_record = working.queries[idx]
+                query_id = query_record["query_id"]
+                positives = working.positives_by_query.get(query_id, [])
+                pos_indices = [candidate_index[cid] for cid in positives if cid in candidate_index]
+                if not pos_indices:
+                    continue
+                metrics = ranking_metrics_for_query(
+                    torch.from_numpy(score_matrix[row]).float(),
+                    pos_indices,
+                    ks,
+                )
+                metrics_per_query.append(metrics)
+                lang = _clean_label(query_record.get("lang") or query_record.get("language"))
+                genre = _clean_label(query_record.get("genre"))
+                length_bucket = _length_bucket_from_record(query_record)
+                per_lang[lang].append(metrics)
+                per_genre[genre].append(metrics)
+                per_length[length_bucket].append(metrics)
 
     aggregated = aggregate_ranking_metrics(metrics_per_query)
     aggregated["num_queries"] = len(metrics_per_query)
@@ -237,7 +260,7 @@ def evaluate_tfidf_attribution(
     max_queries: Optional[int] = None,
     max_candidates: Optional[int] = None,
     negatives_per_query: int = 10,
-    negative_strategy: str = "sample",
+    negative_strategy: str = "all",
     candidate_pool: str = "all",
     max_topic_candidates: Optional[int] = None,
     topic_seed: int = 13,
@@ -303,14 +326,14 @@ def evaluate_tfidf_attribution(
         build_topic_candidate_index(working.candidates) if candidate_pool == "topic" else None
     )
 
-    for idx, query_record in enumerate(working.queries):
-        query_id = query_record["query_id"]
-        positives = working.positives_by_query.get(query_id, [])
-        pos_indices = [candidate_index[cid] for cid in positives if cid in candidate_index]
-        if not pos_indices:
-            continue
+    if candidate_pool == "topic":
+        for idx, query_record in enumerate(working.queries):
+            query_id = query_record["query_id"]
+            positives = working.positives_by_query.get(query_id, [])
+            pos_indices = [candidate_index[cid] for cid in positives if cid in candidate_index]
+            if not pos_indices:
+                continue
 
-        if candidate_pool == "topic":
             pool_indices = build_topic_pool(
                 query_record=query_record,
                 query_id=query_id,
@@ -330,61 +353,106 @@ def evaluate_tfidf_attribution(
             scores = np.asarray(scores.toarray()).ravel()
             neg_pool = [i for i in range(len(pool_indices)) if i not in pool_pos_indices]
             pool_size = len(pool_indices)
-        else:
-            scores = query_matrix[idx].dot(candidate_matrix.T)
-            scores = np.asarray(scores.toarray()).ravel()
-            pool_pos_indices = pos_indices
-            neg_pool = [i for i in range(len(candidate_ids)) if i not in pool_pos_indices]
-            pool_size = len(candidate_ids)
 
-        query_counter += 1
-        pos_vals = [scores[i] for i in pool_pos_indices]
-        positive_scores.extend(pos_vals)
-        positive_pairs += len(pos_vals)
+            query_counter += 1
+            pos_vals = [scores[i] for i in pool_pos_indices]
+            positive_scores.extend(pos_vals)
+            positive_pairs += len(pos_vals)
 
-        lang = _clean_label(query_record.get("lang") or query_record.get("language"))
-        genre = _clean_label(query_record.get("genre"))
-        length_bucket = _length_bucket_from_record(query_record)
-        pos_by_lang[lang].extend(pos_vals)
-        pos_by_genre[genre].extend(pos_vals)
-        pos_by_length[length_bucket].extend(pos_vals)
-        query_count_by_lang[lang] += 1
-        query_count_by_genre[genre] += 1
-        query_count_by_length[length_bucket] += 1
-        pos_pairs_by_lang[lang] += len(pos_vals)
-        pos_pairs_by_genre[genre] += len(pos_vals)
-        pos_pairs_by_length[length_bucket] += len(pos_vals)
+            lang = _clean_label(query_record.get("lang") or query_record.get("language"))
+            genre = _clean_label(query_record.get("genre"))
+            length_bucket = _length_bucket_from_record(query_record)
+            pos_by_lang[lang].extend(pos_vals)
+            pos_by_genre[genre].extend(pos_vals)
+            pos_by_length[length_bucket].extend(pos_vals)
+            query_count_by_lang[lang] += 1
+            query_count_by_genre[genre] += 1
+            query_count_by_length[length_bucket] += 1
+            pos_pairs_by_lang[lang] += len(pos_vals)
+            pos_pairs_by_genre[genre] += len(pos_vals)
+            pos_pairs_by_length[length_bucket] += len(pos_vals)
 
-        if negative_strategy == "all":
-            chosen = neg_pool
-        else:
-            if negatives_per_query is None or negatives_per_query >= len(neg_pool):
+            if negative_strategy == "all":
                 chosen = neg_pool
             else:
-                chosen = rng.sample(neg_pool, negatives_per_query)
-        if chosen:
-            neg_vals = [scores[i] for i in chosen]
-            negative_scores.extend(neg_vals)
-            negative_pairs += len(neg_vals)
-            neg_by_lang[lang].extend(neg_vals)
-            neg_by_genre[genre].extend(neg_vals)
-            neg_by_length[length_bucket].extend(neg_vals)
-            neg_pairs_by_lang[lang] += len(neg_vals)
-            neg_pairs_by_genre[genre] += len(neg_vals)
-            neg_pairs_by_length[length_bucket] += len(neg_vals)
+                if negatives_per_query is None or negatives_per_query >= len(neg_pool):
+                    chosen = neg_pool
+                else:
+                    chosen = rng.sample(neg_pool, negatives_per_query)
+            if chosen:
+                neg_vals = [scores[i] for i in chosen]
+                negative_scores.extend(neg_vals)
+                negative_pairs += len(neg_vals)
+                neg_by_lang[lang].extend(neg_vals)
+                neg_by_genre[genre].extend(neg_vals)
+                neg_by_length[length_bucket].extend(neg_vals)
+                neg_pairs_by_lang[lang] += len(neg_vals)
+                neg_pairs_by_genre[genre] += len(neg_vals)
+                neg_pairs_by_length[length_bucket] += len(neg_vals)
 
-        if candidate_pool == "topic":
             candidate_counts.append(pool_size)
             per_lang_counts[lang].append(pool_size)
             per_genre_counts[genre].append(pool_size)
             per_length_counts[length_bucket].append(pool_size)
+    else:
+        all_indices = list(range(len(candidate_ids)))
+        for idx, query_record in enumerate(working.queries):
+            query_id = query_record["query_id"]
+            positives = working.positives_by_query.get(query_id, [])
+            pos_indices = [candidate_index[cid] for cid in positives if cid in candidate_index]
+            if not pos_indices:
+                continue
+
+            positive_set = set(pos_indices)
+            neg_pool = [i for i in all_indices if i not in positive_set]
+            if negative_strategy == "all":
+                chosen = neg_pool
+            else:
+                if negatives_per_query is None or negatives_per_query >= len(neg_pool):
+                    chosen = neg_pool
+                else:
+                    chosen = rng.sample(neg_pool, negatives_per_query)
+            selected = pos_indices + chosen
+            scores = query_matrix[idx].dot(candidate_matrix[selected].T)
+            scores = np.asarray(scores.toarray()).ravel()
+
+            query_counter += 1
+            pos_vals = scores[: len(pos_indices)].tolist()
+            positive_scores.extend(pos_vals)
+            positive_pairs += len(pos_vals)
+
+            lang = _clean_label(query_record.get("lang") or query_record.get("language"))
+            genre = _clean_label(query_record.get("genre"))
+            length_bucket = _length_bucket_from_record(query_record)
+            pos_by_lang[lang].extend(pos_vals)
+            pos_by_genre[genre].extend(pos_vals)
+            pos_by_length[length_bucket].extend(pos_vals)
+            query_count_by_lang[lang] += 1
+            query_count_by_genre[genre] += 1
+            query_count_by_length[length_bucket] += 1
+            pos_pairs_by_lang[lang] += len(pos_vals)
+            pos_pairs_by_genre[genre] += len(pos_vals)
+            pos_pairs_by_length[length_bucket] += len(pos_vals)
+
+            neg_vals = scores[len(pos_indices) :].tolist()
+            if neg_vals:
+                negative_scores.extend(neg_vals)
+                negative_pairs += len(neg_vals)
+                neg_by_lang[lang].extend(neg_vals)
+                neg_by_genre[genre].extend(neg_vals)
+                neg_by_length[length_bucket].extend(neg_vals)
+                neg_pairs_by_lang[lang] += len(neg_vals)
+                neg_pairs_by_genre[genre] += len(neg_vals)
+                neg_pairs_by_length[length_bucket] += len(neg_vals)
 
     if not positive_scores or not negative_scores:
         raise RuntimeError("EER requires at least one positive and one negative score.")
 
     eer = compute_eer(positive_scores, negative_scores)
+    roc_auc = compute_roc_auc(positive_scores, negative_scores)
     result = {
         "eer": eer,
+        "roc_auc": roc_auc,
         "num_queries": query_counter,
         "positive_pairs": positive_pairs,
         "negative_pairs": negative_pairs,
@@ -446,6 +514,7 @@ def _aggregate_grouped_eer(
             continue
         grouped[key] = {
             "eer": compute_eer(pos_scores, neg_scores),
+            "roc_auc": compute_roc_auc(pos_scores, neg_scores),
             "num_queries": query_counts.get(key, 0),
             "positive_pairs": positive_pairs.get(key, len(pos_scores)),
             "negative_pairs": negative_pairs.get(key, len(neg_scores)),

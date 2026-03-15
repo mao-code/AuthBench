@@ -7,7 +7,7 @@ set -euo pipefail
 
 export PYTHONPATH="$(pwd):${PYTHONPATH:-}"
 
-DATASET_ROOT="${DATASET_ROOT:-processing/outputs/official_ttl300k_cap10M_sf10k_postprocessed_balanced}"
+DATASET_ROOT="${DATASET_ROOT:-processing/outputs/combined_phase1_phase2}"
 SPLIT="${SPLIT:-test}"
 TASK="${TASK:-both}"
 OUTPUT_DIR="${OUTPUT_DIR:-eval/results}"
@@ -16,6 +16,7 @@ BATCH_SIZE="${BATCH_SIZE:-32}"
 NO_TRUNCATION="${NO_TRUNCATION:-1}"
 POOLING="${POOLING:-mean}"
 NEG_PER_QUERY="${NEG_PER_QUERY:-50}"
+NEGATIVE_STRATEGY="${NEGATIVE_STRATEGY:-all}"
 CANDIDATE_CHUNK_SIZE="${CANDIDATE_CHUNK_SIZE:-128}"
 
 # Weights & Biases defaults (override via env).
@@ -82,6 +83,8 @@ else
     qwen2.5-3b
     qwen2.5-3b-instruct
     qwen2.5-7b-instruct
+    # Qwen3.5 (image-text-to-text)
+    
     # LLaMA base/instruct (≤8B)
     llama3.1-8b
     llama3.1-8b-instruct
@@ -92,11 +95,6 @@ else
     # DeepSeek base/chat/coder
     deepseek-llm-7b-base
     deepseek-llm-7b-chat
-    deepseek-coder-6.7b-instruct
-    # Instructors for comparison
-    instructor-xl
-    instructor-large
-    instructor-base
   )
 fi
 
@@ -110,6 +108,7 @@ COMMON_ARGS=(
   # --max-length "${MAX_LENGTH}"
   --pooling "${POOLING}"
   --negatives-per-query "${NEG_PER_QUERY}"
+  --negative-strategy "${NEGATIVE_STRATEGY}"
   --candidate-chunk-size "${CANDIDATE_CHUNK_SIZE}"
 )
 

@@ -3,7 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List
 import sys
 
 # Ensure the repo parent is on sys.path so `AuthBench` imports resolve when running from repo root.
@@ -18,15 +18,6 @@ from AuthBench.eval.evaluators import (
     evaluate_authorship_attribution,
     evaluate_authorship_representation,
 )
-from AuthBench.eval.self_consistency import (
-    DEFAULT_SELF_CONSISTENCY_RETRIEVAL_KS,
-    DEFAULT_STYLE_PROMPT_TEMPLATE,
-    SelfConsistencyCausalLMEmbedder,
-    SelfConsistencyConfig,
-    encode_self_consistency_split_embeddings,
-    evaluate_self_consistency_attribution,
-    evaluate_self_consistency_representation,
-)
 from AuthBench.utilities import model_registry
 
 
@@ -36,7 +27,7 @@ DEFAULT_DATASET_ROOT = (
     / "outputs"
     / "official_ttl300k_cap10M_sf10k_postprocessed"
 )
-DEFAULT_RETRIEVAL_KS = DEFAULT_SELF_CONSISTENCY_RETRIEVAL_KS
+DEFAULT_RETRIEVAL_KS = (1, 3, 5, 10)
 
 
 def parse_args() -> argparse.Namespace:
@@ -64,8 +55,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--negative-strategy",
         choices=("sample", "all"),
-        default="sample",
-        help="How to choose negatives for attribution EER.",
+        default="all",
+        help="How to choose negatives for attribution metrics.",
     )
     parser.add_argument(
         "--candidate-pool",
@@ -98,45 +89,6 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--wandb-entity", help="Optional W&B entity/org.")
     parser.add_argument("--wandb-tags", nargs="*", help="Optional list of W&B tags.")
     parser.add_argument(
-        "--self-consistency",
-        action="store_true",
-        help="Sample multiple style descriptions from supported causal LLMs, sum the per-sample query-candidate scores, and rerank candidates.",
-    )
-    parser.add_argument(
-        "--self-consistency-samples",
-        type=int,
-        default=4,
-        help="Number of sampled style descriptions / sampled document embeddings per document when --self-consistency is enabled.",
-    )
-    parser.add_argument(
-        "--self-consistency-top-k",
-        type=int,
-        default=50,
-        help="Top-k sampling cutoff for self-consistency generation.",
-    )
-    parser.add_argument(
-        "--self-consistency-temperature",
-        type=float,
-        default=0.8,
-        help="Sampling temperature for self-consistency generation.",
-    )
-    parser.add_argument(
-        "--self-consistency-max-new-tokens",
-        type=int,
-        default=96,
-        help="Maximum number of generated tokens per sampled style description.",
-    )
-    parser.add_argument(
-        "--self-consistency-include-original",
-        action="store_true",
-        help="Add the direct document embedding as one extra sampled embedding in the score sum.",
-    )
-    parser.add_argument(
-        "--self-consistency-prompt",
-        default=DEFAULT_STYLE_PROMPT_TEMPLATE,
-        help="Prompt template for style generation; must include a {text} placeholder.",
-    )
-    parser.add_argument(
         "--trust-remote-code",
         action="store_true",
         help="Pass trust_remote_code=True to HF loaders. Even without this flag, "
@@ -153,8 +105,6 @@ def parse_args() -> argparse.Namespace:
 
 def resolve_models(args: argparse.Namespace) -> List[str]:
     if args.all_models:
-        if args.self_consistency:
-            return model_registry.self_consistency_model_names()
         return sorted(model_registry.MODEL_HF_PATHS.keys())
     return args.models
 
@@ -178,7 +128,7 @@ def _init_wandb(args: argparse.Namespace):
     except ImportError as exc:
         raise RuntimeError("wandb is not installed. Add it to your environment to enable logging.") from exc
 
-    run = wandb.init(
+    return wandb.init(
         project=args.wandb_project,
         name=args.wandb_run_name,
         entity=args.wandb_entity,
@@ -199,26 +149,12 @@ def _init_wandb(args: argparse.Namespace):
             "max_topic_candidates": args.max_topic_candidates,
             "topic_seed": args.topic_seed,
             "dataset_root": str(args.dataset_root),
-            "self_consistency": args.self_consistency,
-            "self_consistency_samples": args.self_consistency_samples,
-            "self_consistency_top_k": args.self_consistency_top_k,
-            "self_consistency_temperature": args.self_consistency_temperature,
-            "self_consistency_max_new_tokens": args.self_consistency_max_new_tokens,
-            "self_consistency_include_original": args.self_consistency_include_original,
-            "self_consistency_total_votes": args.self_consistency_samples
-            + int(args.self_consistency_include_original),
-            "self_consistency_aggregation_strategy": "sum_sample_scores_rerank"
-            if args.self_consistency
-            else None,
         },
     )
-    return run
 
 
 def main() -> int:
     args = parse_args()
-    if args.self_consistency and args.late_interaction:
-        raise ValueError("Self-consistency only supports pooled vectors; disable --late-interaction.")
     wandb_run = _init_wandb(args)
     split = load_split(args.dataset_root, args.split)
 
@@ -230,141 +166,55 @@ def main() -> int:
     for model_name in model_names:
         repo = model_registry.get_hf_repo(model_name) if model_name in model_registry.MODEL_HF_PATHS else model_name
         print(f"\n=== Evaluating {model_name} ({repo}) on {args.split} ===")
-        use_self_consistency = args.self_consistency
-        if (
-            args.self_consistency
-            and model_name in model_registry.MODEL_HF_PATHS
-            and not model_registry.supports_self_consistency(model_name)
-        ):
-            raise ValueError(
-                f"Model '{model_name}' does not support generation-based self-consistency. "
-                "Use one of the causal LLM checkpoints from model_registry.self_consistency_model_names()."
-            )
 
-        if use_self_consistency:
-            embedder = SelfConsistencyCausalLMEmbedder(
-                repo,
-                config=SelfConsistencyConfig(
-                    num_samples=args.self_consistency_samples,
-                    top_k=args.self_consistency_top_k,
-                    temperature=args.self_consistency_temperature,
-                    max_new_tokens=args.self_consistency_max_new_tokens,
-                    prompt_template=args.self_consistency_prompt,
-                    include_original=args.self_consistency_include_original,
-                ),
-                device=args.device,
-                max_length=args.max_length,
-                no_truncation=args.no_truncation,
-                pooling=args.pooling,
-                torch_dtype=args.torch_dtype,
-                trust_remote_code=args.trust_remote_code,
-                allow_remote_code_fallback=allow_remote_code_fallback,
-            )
-        else:
-            embedder = HuggingFaceEmbedder(
-                repo,
-                device=args.device,
-                max_length=args.max_length,
-                no_truncation=args.no_truncation,
-                pooling=args.pooling,
-                torch_dtype=args.torch_dtype,
-                trust_remote_code=args.trust_remote_code,
-                allow_remote_code_fallback=allow_remote_code_fallback,
-            )
+        embedder = HuggingFaceEmbedder(
+            repo,
+            device=args.device,
+            max_length=args.max_length,
+            no_truncation=args.no_truncation,
+            pooling=args.pooling,
+            torch_dtype=args.torch_dtype,
+            trust_remote_code=args.trust_remote_code,
+            allow_remote_code_fallback=allow_remote_code_fallback,
+        )
 
         model_result: Dict[str, object] = {"hf_repo": repo}
-        working_split = None
-        sampled_query_embeddings = None
-        sampled_candidate_embeddings = None
-        if use_self_consistency:
-            working_split = split.limited(
-                max_queries=args.max_queries,
-                max_candidates=args.max_candidates,
-            )
-            sampled_query_embeddings, sampled_candidate_embeddings = encode_self_consistency_split_embeddings(
-                working_split,
-                embedder,
+        if args.task in ("representation", "both"):
+            rep_metrics = evaluate_authorship_representation(
+                split=split,
+                embedder=embedder,
                 batch_size=args.batch_size,
+                ks=DEFAULT_RETRIEVAL_KS,
                 query_prefix=args.query_prefix,
                 doc_prefix=args.doc_prefix,
+                max_queries=args.max_queries,
+                max_candidates=args.max_candidates,
+                late_interaction=args.late_interaction,
+                candidate_chunk_size=args.candidate_chunk_size,
+                candidate_pool=args.candidate_pool,
+                max_topic_candidates=args.max_topic_candidates,
+                topic_seed=args.topic_seed,
             )
-            model_result["self_consistency"] = {
-                "enabled": True,
-                "num_samples": args.self_consistency_samples,
-                "top_k": args.self_consistency_top_k,
-                "temperature": args.self_consistency_temperature,
-                "max_new_tokens": args.self_consistency_max_new_tokens,
-                "include_original": args.self_consistency_include_original,
-                "total_votes": args.self_consistency_samples
-                + int(args.self_consistency_include_original),
-                "prompt_template": args.self_consistency_prompt,
-                "aggregation_strategy": "sum_sample_scores_rerank",
-                "score_aggregation": "sum_sample_scores",
-                "retrieval_ks": list(DEFAULT_RETRIEVAL_KS),
-            }
-        if args.task in ("representation", "both"):
-            if use_self_consistency:
-                rep_metrics = evaluate_self_consistency_representation(
-                    split=working_split,
-                    query_embeddings=sampled_query_embeddings,
-                    candidate_embeddings=sampled_candidate_embeddings,
-                    batch_size=args.batch_size,
-                    ks=DEFAULT_RETRIEVAL_KS,
-                    candidate_pool=args.candidate_pool,
-                    max_topic_candidates=args.max_topic_candidates,
-                    topic_seed=args.topic_seed,
-                    score_device=args.device,
-                )
-            else:
-                rep_metrics = evaluate_authorship_representation(
-                    split=split,
-                    embedder=embedder,
-                    batch_size=args.batch_size,
-                    ks=DEFAULT_RETRIEVAL_KS,
-                    query_prefix=args.query_prefix,
-                    doc_prefix=args.doc_prefix,
-                    max_queries=args.max_queries,
-                    max_candidates=args.max_candidates,
-                    late_interaction=args.late_interaction,
-                    candidate_chunk_size=args.candidate_chunk_size,
-                    candidate_pool=args.candidate_pool,
-                    max_topic_candidates=args.max_topic_candidates,
-                    topic_seed=args.topic_seed,
-                )
             model_result["representation"] = rep_metrics
             print("Representation metrics:", json.dumps(rep_metrics, indent=2))
 
         if args.task in ("attribution", "both"):
-            if use_self_consistency:
-                attr_metrics = evaluate_self_consistency_attribution(
-                    split=working_split,
-                    query_embeddings=sampled_query_embeddings,
-                    candidate_embeddings=sampled_candidate_embeddings,
-                    batch_size=args.batch_size,
-                    negatives_per_query=args.negatives_per_query,
-                    negative_strategy=args.negative_strategy,
-                    candidate_pool=args.candidate_pool,
-                    max_topic_candidates=args.max_topic_candidates,
-                    topic_seed=args.topic_seed,
-                    score_device=args.device,
-                )
-            else:
-                attr_metrics = evaluate_authorship_attribution(
-                    split=split,
-                    embedder=embedder,
-                    batch_size=args.batch_size,
-                    query_prefix=args.query_prefix,
-                    doc_prefix=args.doc_prefix,
-                    max_queries=args.max_queries,
-                    max_candidates=args.max_candidates,
-                    negatives_per_query=args.negatives_per_query,
-                    negative_strategy=args.negative_strategy,
-                    late_interaction=args.late_interaction,
-                    candidate_chunk_size=args.candidate_chunk_size,
-                    candidate_pool=args.candidate_pool,
-                    max_topic_candidates=args.max_topic_candidates,
-                    topic_seed=args.topic_seed,
-                )
+            attr_metrics = evaluate_authorship_attribution(
+                split=split,
+                embedder=embedder,
+                batch_size=args.batch_size,
+                query_prefix=args.query_prefix,
+                doc_prefix=args.doc_prefix,
+                max_queries=args.max_queries,
+                max_candidates=args.max_candidates,
+                negatives_per_query=args.negatives_per_query,
+                negative_strategy=args.negative_strategy,
+                late_interaction=args.late_interaction,
+                candidate_chunk_size=args.candidate_chunk_size,
+                candidate_pool=args.candidate_pool,
+                max_topic_candidates=args.max_topic_candidates,
+                topic_seed=args.topic_seed,
+            )
             model_result["attribution"] = attr_metrics
             print("Attribution metrics:", json.dumps(attr_metrics, indent=2))
 

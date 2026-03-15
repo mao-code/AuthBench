@@ -11,6 +11,7 @@ from AuthBench.eval.embedder import HuggingFaceEmbedder
 from AuthBench.eval.metrics import (
     aggregate_ranking_metrics,
     compute_eer,
+    compute_roc_auc,
     ranking_metrics_for_query,
 )
 from AuthBench.eval.pools import build_topic_candidate_index, build_topic_pool
@@ -87,6 +88,7 @@ def _aggregate_grouped_eer(
             continue
         grouped[key] = {
             "eer": compute_eer(pos_scores, neg_scores),
+            "roc_auc": compute_roc_auc(pos_scores, neg_scores),
             "num_queries": query_counts.get(key, 0),
             "positive_pairs": positive_pairs.get(key, len(pos_scores)),
             "negative_pairs": negative_pairs.get(key, len(neg_scores)),
@@ -344,7 +346,7 @@ def evaluate_authorship_attribution(
     max_queries: Optional[int] = None,
     max_candidates: Optional[int] = None,
     negatives_per_query: int = 50,
-    negative_strategy: str = "sample",
+    negative_strategy: str = "all",
     late_interaction: bool = False,
     candidate_chunk_size: int = 128,
     score_device: Optional[str] = None,
@@ -353,7 +355,7 @@ def evaluate_authorship_attribution(
     max_topic_candidates: Optional[int] = None,
     topic_seed: int = 13,
 ) -> Dict[str, object]:
-    """Evaluate Equal Error Rate for authorship attribution / verification."""
+    """Evaluate EER and ROC-AUC for authorship attribution / verification."""
 
     working = split.limited(max_queries=max_queries, max_candidates=max_candidates)
     candidate_ids = [c["candidate_id"] for c in working.candidates]
@@ -585,8 +587,10 @@ def evaluate_authorship_attribution(
         raise RuntimeError("EER requires at least one positive and one negative score.")
 
     eer = compute_eer(positive_scores, negative_scores)
+    roc_auc = compute_roc_auc(positive_scores, negative_scores)
     result = {
         "eer": eer,
+        "roc_auc": roc_auc,
         "num_queries": query_counter,
         "positive_pairs": positive_pairs,
         "negative_pairs": negative_pairs,

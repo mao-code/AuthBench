@@ -84,7 +84,8 @@ def compute_eer(positive_scores: Sequence[float], negative_scores: Sequence[floa
     scores = np.concatenate([pos, neg])
     labels = np.concatenate([np.ones_like(pos), np.zeros_like(neg)])
 
-    order = np.argsort(-scores)
+    order = np.argsort(-scores, kind="mergesort")
+    scores_sorted = scores[order]
     labels_sorted = labels[order]
 
     P = float(pos.size)
@@ -94,15 +95,19 @@ def compute_eer(positive_scores: Sequence[float], negative_scores: Sequence[floa
     fp = 0.0
     fprs = [0.0]
     fnrs = [1.0]
-    for lbl in labels_sorted:
-        if lbl == 1:
-            tp += 1
-        else:
-            fp += 1
+    start = 0
+    while start < scores_sorted.size:
+        end = start + 1
+        while end < scores_sorted.size and scores_sorted[end] == scores_sorted[start]:
+            end += 1
+        block = labels_sorted[start:end]
+        tp += float(block.sum())
+        fp += float(block.size - block.sum())
         fpr = fp / N
         fnr = (P - tp) / P
         fprs.append(fpr)
         fnrs.append(fnr)
+        start = end
 
     fprs = np.asarray(fprs)
     fnrs = np.asarray(fnrs)
@@ -124,3 +129,36 @@ def compute_eer(positive_scores: Sequence[float], negative_scores: Sequence[floa
     eer = x0 + t * (x1 - x0)
     return float(eer)
 
+
+def compute_roc_auc(positive_scores: Sequence[float], negative_scores: Sequence[float]) -> float:
+    """Compute ROC-AUC from positive and negative scores.
+
+    The implementation uses average ranks for ties, which makes it equivalent to the
+    Mann-Whitney U statistic normalized by the number of positive-negative pairs.
+    """
+
+    pos = np.asarray(list(positive_scores), dtype=np.float64)
+    neg = np.asarray(list(negative_scores), dtype=np.float64)
+    if pos.size == 0 or neg.size == 0:
+        raise ValueError("Positive and negative score arrays must be non-empty.")
+
+    scores = np.concatenate([pos, neg])
+    labels = np.concatenate([np.ones_like(pos), np.zeros_like(neg)])
+    order = np.argsort(scores, kind="mergesort")
+    sorted_scores = scores[order]
+
+    ranks = np.empty(scores.shape[0], dtype=np.float64)
+    start = 0
+    while start < sorted_scores.size:
+        end = start + 1
+        while end < sorted_scores.size and sorted_scores[end] == sorted_scores[start]:
+            end += 1
+        avg_rank = ((start + 1) + end) / 2.0
+        ranks[order[start:end]] = avg_rank
+        start = end
+
+    num_pos = float(pos.size)
+    num_neg = float(neg.size)
+    pos_rank_sum = ranks[labels == 1].sum()
+    auc = (pos_rank_sum - (num_pos * (num_pos + 1.0) / 2.0)) / (num_pos * num_neg)
+    return float(auc)
