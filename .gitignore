@@ -17,7 +17,7 @@ venv/
 # eval/results/
 wandb/
 
-# **/outputs/**
+**/outputs/**
 
 **/downloads/**
 **/corpora/**
