@@ -1,65 +1,34 @@
-\documentclass[11pt]{article}
+\documentclass{article}
+\usepackage[submission]{colm2026_conference}
 
-% Change "review" to "final" to generate the final (sometimes called camera-ready) version.
-% Change to "preprint" to generate a non-anonymous version with page numbers.
-\usepackage[review]{acl}
-
-% Standard package includes
-\usepackage{times}
-\usepackage{latexsym}
-
-% For proper rendering and hyphenation of words containing Latin characters (including in bib files)
-\usepackage[T1]{fontenc}
-% For Vietnamese characters
-% \usepackage[T5]{fontenc}
-% See https://www.latex-project.org/help/documentation/encguide.pdf for other character sets
-
-% This assumes your files are encoded as UTF8
-\usepackage[utf8]{inputenc}
-
-% This is not strictly necessary, and may be commented out,
-% but it will improve the layout of the manuscript,
-% and will typically save some space.
+\usepackage{iftex}
 \usepackage{microtype}
-
-% This is also not strictly necessary, and may be commented out.
-% However, it will improve the aesthetics of text in
-% the typewriter font.
-\usepackage{inconsolata}
-
-%Including images in your LaTeX document requires adding
-%additional package(s)
+\usepackage{url}
+\usepackage{lineno}
+\usepackage{amsmath,amssymb}
+\allowdisplaybreaks
+\usepackage{mathtools}
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{array}
+\usepackage{longtable}
 \usepackage{graphicx}
-
+\usepackage{pifont}
+\usepackage{xcolor}
 \usepackage[most]{tcolorbox}
-% \usepackage[HTML]{xcolor}
+\usepackage{fvextra}
+\usepackage{ragged2e}
+\usepackage{subcaption}
+\usepackage{pdflscape}
+\usepackage{multirow}
 
 \definecolor{mygray}{HTML}{4D4D50}
 \definecolor{myblue}{HTML}{7EA6E0}
-
-% If the title and author information does not fit in the area allocated, uncomment the following
-%
-%\setlength\titlebox{<dim>}
-%
-% and set <dim> to something 5cm or larger.
+\definecolor{darkblue}{rgb}{0, 0, 0.5}
+\hypersetup{colorlinks=true, citecolor=darkblue, linkcolor=darkblue, urlcolor=darkblue}
+\colorlet{red}{black}
 
 \title{AuthBench: A Large-Scale Multilingual Benchmark for Authorship Representation across Genres and Lengths}
-
-% Author information can be set in various styles:
-% For several authors from the same institution:
-% \author{Author 1 \and ... \and Author n \\
-%         Address line \\ ... \\ Address line}
-% if the names do not fit well on one line use
-%         Author 1 \\ {\bf Author 2} \\ ... \\ {\bf Author n} \\
-% For authors from different institutions:
-% \author{Author 1 \\ Address line \\  ... \\ Address line
-%         \And  ... \And
-%         Author n \\ Address line \\ ... \\ Address line}
-% To start a separate ``row'' of authors use \AND, as in
-% \author{Author 1 \\ Address line \\  ... \\ Address line
-%         \AND
-%         Author 2 \\ Address line \\ ... \\ Address line \And
-%         Author 3 \\ Address line \\ ... \\ Address line}
 
 \author{First Author \\
   Affiliation / Address line 1 \\
@@ -72,71 +41,45 @@
   Affiliation / Address line 3 \\
   \texttt{email@domain} \\}
 
-%\author{
-%  \textbf{First Author\textsuperscript{1}},
-%  \textbf{Second Author\textsuperscript{1,2}},
-%  \textbf{Third T. Author\textsuperscript{1}},
-%  \textbf{Fourth Author\textsuperscript{1}},
-%\\
-%  \textbf{Fifth Author\textsuperscript{1,2}},
-%  \textbf{Sixth Author\textsuperscript{1}},
-%  \textbf{Seventh Author\textsuperscript{1}},
-%  \textbf{Eighth Author \textsuperscript{1,2,3,4}},
-%\\
-%  \textbf{Ninth Author\textsuperscript{1}},
-%  \textbf{Tenth Author\textsuperscript{1}},
-%  \textbf{Eleventh E. Author\textsuperscript{1,2,3,4,5}},
-%  \textbf{Twelfth Author\textsuperscript{1}},
-%\\
-%  \textbf{Thirteenth Author\textsuperscript{3}},
-%  \textbf{Fourteenth F. Author\textsuperscript{2,4}},
-%  \textbf{Fifteenth Author\textsuperscript{1}},
-%  \textbf{Sixteenth Author\textsuperscript{1}},
-%\\
-%  \textbf{Seventeenth S. Author\textsuperscript{4,5}},
-%  \textbf{Eighteenth Author\textsuperscript{3,4}},
-%  \textbf{Nineteenth N. Author\textsuperscript{2,5}},
-%  \textbf{Twentieth Author\textsuperscript{1}}
-%\\
-%\\
-%  \textsuperscript{1}Affiliation 1,
-%  \textsuperscript{2}Affiliation 2,
-%  \textsuperscript{3}Affiliation 3,
-%  \textsuperscript{4}Affiliation 4,
-%  \textsuperscript{5}Affiliation 5
-%\\
-%  \small{
-%    \textbf{Correspondence:} \href{mailto:email@domain}{email@domain}
-%  }
-%}
+\newcommand{\rev}[1]{#1}
+\newcommand{\ind}[1]{\mathbf{1}\!\left[#1\right]}
+\newcommand{\maybe}{\ensuremath{\circ}}
+\newcommand{\rot}[1]{\rotatebox{90}{\strut #1}}
+\newcolumntype{L}[1]{>{\raggedright\arraybackslash}p{#1}}
+\graphicspath{{./}}
+\newcommand{\safeincludegraphics}[2][]{%
+  \IfFileExists{#2}{%
+    \includegraphics[#1]{#2}%
+  }{%
+    \fbox{%
+      \parbox[c][0.18\textheight][c]{0.9\linewidth}{%
+        \centering Figure file not found\\\texttt{#2}%
+      }%
+    }%
+  }%
+}
 
-\usepackage{amsmath,amssymb}
-\allowdisplaybreaks
-\usepackage{mathtools}
-\usepackage{booktabs}
-\usepackage{tabularx}
-\usepackage{array}
-\usepackage{longtable}
-\usepackage{graphicx}
-\usepackage{pifont}
-\usepackage{xcolor}
-\newcommand{\rev}[1]{\textcolor{red}{#1}}
-\newcommand{\ind}[1]{\mathbb{I}\!\left[#1\right]}
+\ifPDFTeX
+  \PackageError{colm_latex}{This manuscript requires XeLaTeX or LuaLaTeX because it contains CJK text}{Switch the Overleaf compiler to XeLaTeX.}
+\else
+  \usepackage{fontspec}
+  \usepackage{xeCJK}
+  \setmainfont{TeX Gyre Termes}
+  \setmonofont{Inconsolata}
+  \IfFontExistsTF{Noto Serif CJK SC}
+    {\setCJKmainfont{Noto Serif CJK SC}}
+    {\setCJKmainfont{FandolSong-Regular}}
+  \IfFontExistsTF{Noto Sans Mono CJK SC}
+    {\setCJKmonofont{Noto Sans Mono CJK SC}}
+    {\setCJKmonofont{FandolHei-Regular}}
+\fi
 
-
-% For code-like blocks
-\usepackage{fvextra}
 \DefineVerbatimEnvironment{jsonblock}{Verbatim}{
   breaklines=true,
   breaksymbolleft=\tiny,
   fontsize=\small
 }
 
-% --- Pretty JSON example box (no shell-escape required) ---
-\usepackage[most]{tcolorbox}
-\usepackage{fvextra}
-
-% A verbatim environment that wraps long lines cleanly
 \DefineVerbatimEnvironment{JSONVerbatim}{Verbatim}{
   breaklines=true,
   breakanywhere=true,
@@ -160,40 +103,10 @@
   #1
 }
 
-% --- Unicode + CJK fonts (XeLaTeX) ---
-\usepackage{fontspec}
-\usepackage{xeCJK}
-
-% Pick fonts that exist in Overleaf. Noto CJK is usually available.
-\setmainfont{Times New Roman} % or TeX Gyre Termes
-\setmonofont{Inconsolata}     % your Latin mono is fine
-
-% Critical: a CJK-capable mono font for verbatim/code blocks
-\setCJKmainfont{Noto Serif CJK SC}
-\setCJKmonofont{Noto Sans Mono CJK SC}
-
-% --- Benchmark comparison table helpers (safe in text mode) ---
-% \newcommand{\textcolor{green}{\ding{51}}}{\ensuremath{\checkmark}}
-% \newcommand{\textcolor{red}{\ding{55}}}{\ensuremath{\times}}
-\newcommand{\maybe}{\ensuremath{\circ}}
-\newcommand{\rot}[1]{\rotatebox{90}{\strut #1}}
-
-\usepackage{ragged2e}
-
-\usepackage{subcaption}
-
-\usepackage{booktabs}
-\usepackage{longtable}
-\usepackage{pdflscape}
-\usepackage{multirow}
-
-\usepackage{hyperref}
-
-\usepackage{mathtools}
-\usepackage{microtype}
-\newcolumntype{L}[1]{>{\raggedright\arraybackslash}p{#1}}
-
 \begin{document}
+\ifcolmsubmission
+\linenumbers
+\fi
 \maketitle
 
 \begin{abstract}
@@ -278,11 +191,10 @@ Comparison of our AuthBench with existing authorship benchmarks.}
 \label{tab:bench-comparison}
 \end{table*}
 \fi
-{\color{red}
 \begin{table*}[t]
 \centering
-\tiny
-\setlength{\tabcolsep}{3pt}
+\footnotesize
+\setlength{\tabcolsep}{4pt}
 \renewcommand{\arraystretch}{1.08}
 \begin{tabular}{@{}L{2.45cm}cL{2.15cm}L{4.65cm}c c L{4.35cm}@{}}
 \toprule
@@ -311,7 +223,6 @@ Comparison of our AuthBench with existing authorship benchmarks.}
 \caption{\textbf{Comparison of authorship resources and benchmarks.} ``Cov.'' denotes multilingual / multi-genre / explicit length control. ``Task'' reports the canonical authorship use: native attribution/verification benchmarks are distinguished from corpora mainly adapted for authorship and from one-to-one / one-to-many identification benchmarks. $^\dagger$Blogs50 is a derived subset of the 2006 Blog Authorship Corpus rather than an independently released corpus.}
 \label{tab:bench-comparison}
 \end{table*}
-}
 
 To overcome the above limitations of existing benchmarks on authorship representation, we introduce AuthBench, a large-scale multilingual benchmark for Authorship Representation enabling Attribution and Verification across genres and document lengths. AuthBench is constructed from \rev{17 public sources in the current codebase configuration} (see Appendix~\ref{sec:appendix-raw-sources} for details). \rev{At a high level, the construction pipeline standardizes records from heterogeneous sources, filters noisy and mismatched text, removes duplicate content, audits language labels, and then balances the final release across languages, genres, and length buckets; 9 sources are retained in the current materialized output.} As a result, AuthBench comprises \rev{409,346} documents of diverse lengths (short, medium, long, and extra-long), authored by \rev{149,344} individuals across ten widely used languages (en, zh, hi, es, fr, ar, ru, de, ja, ko), spanning \rev{six primary genres} with \rev{62 fine-grained subgenres}. AuthBench supports two complementary evaluation tasks: (i) \emph{authorship attribution}, formulated as \rev{an open-world same-author} retrieval task evaluated with ranking-based metrics (Success@K, Recall@K, nDCG@K); and (ii) \emph{authorship verification}, formulated as binary decision over query--candidate pairs and evaluated \rev{with EER and ROC-AUC}. We release standardized dataset splits and a unified evaluation toolkit to facilitate reproducible and comprehensive evaluation.
 
@@ -385,7 +296,7 @@ After construction, AuthBench comprises \rev{409{,}346 documents authored by 149
 \subsection{Pipeline Summary}
 \begin{figure*}[h!]
   \centering
-  \includegraphics[width=\textwidth]{latex/authbench_framework.pdf}
+  \safeincludegraphics[width=\textwidth]{latex/authbench_framework.pdf}
   \caption{AuthBench construction pipeline. Full details are provided in Appendix~\ref{sec:appendix-construction-details}.}
   \label{fig:processing_flow}
 \end{figure*}
@@ -728,8 +639,8 @@ Table~\ref{tab:genre-s10-top} presents a fine-grained breakdown of model perform
 \begin{figure*}[h!]
   \centering
   % \includegraphics[width=0.48\textwidth]{plots/loss_curve.pdf} \\
-  \includegraphics[width=0.48\textwidth]{plots/success5.pdf}
-  \includegraphics[width=0.48\textwidth]{plots/eer.pdf}
+  \safeincludegraphics[width=0.48\textwidth]{eval/results/training_summary/plots/success5.pdf}
+  \safeincludegraphics[width=0.48\textwidth]{eval/results/training_summary/plots/eer.pdf}
   \caption{Training dynamics of select models.}
   \label{fig:training-curves}
 \end{figure*}
@@ -794,6 +705,7 @@ In future work, we plan to further inspect all the examples in the benchmark.
 % Finally, while we evaluate verification via EER and retrieval via ranking metrics, deployment settings often require application-specific operating points, calibration procedures, and robustness checks against topic leakage and distribution shift; AuthBench is intended as a diagnostic benchmark rather than a complete substitute for application-grounded evaluation.
 
 \bibliography{custom}
+\bibliographystyle{colm2026_conference}
 
 \appendix
 
@@ -1040,11 +952,7 @@ For a cutoff $K$ \rev{(we report $K=5$ in the main paper)}, we compute:
 
 We define Success@K as:
 \[
-\mathrm{Success@}K(q) =
-\begin{cases}
-1 & \text{if } \sum_{i=1}^{K} \mathrm{rel}_i > 0, \\
-0 & \text{otherwise}.
-\end{cases}
+\mathrm{Success@}K(q) = \ind{\sum_{i=1}^{K} \mathrm{rel}_i > 0}.
 \]
 We report $S@5$, $R@5$, and nDCG@5 as macro-averages over queries.
 
@@ -1419,8 +1327,8 @@ Table~\ref{tab:lang-s5-full} and Table~\ref{tab:lang-eer5-full} are the complete
 \label{tab:lang-eer5-full}
 \end{table*}
 
-\subsection{Primar-genre Full Results}
-Table~\ref{tab:genre-s5-full} and Table~\ref{tab:genre-eer5-full} are the complete finegrain results of each language for all models.
+\subsection{Primary-genre Full Results}
+Table~\ref{tab:genre-s5-full} and Table~\ref{tab:genre-eer5-full} are the complete fine-grained results of each primary genre for all models.
 
 % (3/6) Primary-genre Success@5 (FULL)  [blog/social_media are macro-averaged over subgenres]
 \begin{table*}[htbp]
@@ -1759,7 +1667,7 @@ Table~\ref{tab:length-s5-full} and Table~\ref{tab:length-eer5-full} are the comp
 Figure \ref{fig:training-loss} illustrates the training loss dynamics of selected embedding models on AuthBench. All models exhibit a smooth and monotonic decrease in loss, indicating stable optimization and effective learning. Despite differences in convergence rates and initial loss values, the consistent downward trends suggest that AuthBench provides a meaningful training signal that can be reliably leveraged by diverse model architectures.
 \begin{figure}[h!]
   \centering
-  \includegraphics[width=\linewidth]{plots/loss_curve.pdf}
+  \safeincludegraphics[width=\linewidth]{eval/results/training_summary/plots/loss_curve.pdf}
   \caption{Training dynamics of loss of select models.}
   \label{fig:training-loss}
 \end{figure}
@@ -1773,48 +1681,48 @@ Figure~\ref{fig:aurabench_lang_s5_overall} to ~\ref{fig:aurabench_lang_eer@5_ove
 
 \begin{figure*}[h!]
   \centering
-  \includegraphics[width=\textwidth]{latex/representation_success@5_overall_bar.pdf}
-  \caption{Macro-average of Sucess@5}
+  \safeincludegraphics[width=\textwidth]{eval/results/analysis/representation_success@5_overall_bar.pdf}
+  \caption{Macro-average of Success@5}
   \label{fig:aurabench_lang_s5_overall}
 \end{figure*}
 
 \begin{figure*}[h!]
   \centering
-  \includegraphics[width=\textwidth]{latex/representation_recall@5_overall_bar.pdf}
+  \safeincludegraphics[width=\textwidth]{eval/results/analysis/representation_recall@5_overall_bar.pdf}
   \caption{Macro-average of Recall@5}
   \label{fig:aurabench_lang_r5_overall}
 \end{figure*}
 
 \begin{figure*}[h!]
   \centering
-  \includegraphics[width=\textwidth]{latex/representation_ndcg@5_overall_bar.pdf}
+  \safeincludegraphics[width=\textwidth]{eval/results/analysis/representation_ndcg@5_overall_bar.pdf}
   \caption{Macro-average of nDCG@5}
   \label{fig:aurabench_lang_ndcg5_overall}
 \end{figure*}
 \begin{figure*}[h!]
   \centering
-  \includegraphics[width=\textwidth]{latex/attribution_eer@5_overall_bar.pdf}
+  \safeincludegraphics[width=\textwidth]{eval/results/analysis/attribution_eer@5_overall_bar.pdf}
   \caption{Macro-average of EER}
   \label{fig:aurabench_lang_eer@5_overall}
 \end{figure*}
 
 \begin{figure*}[h!]
   \centering
-  \includegraphics[width=0.90\textwidth]{latex/language_distribution_bar.pdf}
+  \safeincludegraphics[width=0.90\textwidth]{post_analysis/outputs/combined_phase1_phase2/statistics/figures/language_distribution.png}
   \caption{\textbf{Language distribution of AuthBench.} Bar heights show the number of documents per language.}
   \label{fig:aurabench-lang-dist}
 \end{figure*}
 
 \begin{figure*}[h!]
   \centering
-  \includegraphics[width=\textwidth]{latex/genre_distribution_by_language_pies.pdf}
+  \safeincludegraphics[width=\textwidth]{latex/genre_distribution_by_language_pies.pdf}
   \caption{\textbf{Genre distribution per language.} Each subplot is one language.}
   \label{fig:aurabench-genre-by-lang}
 \end{figure*}
 
 \begin{figure*}[h!]
   \centering
-  \includegraphics[width=\textwidth]{latex/token_length_boxplot_by_language.pdf}
+  \safeincludegraphics[width=\textwidth]{post_analysis/outputs/combined_phase1_phase2/statistics/figures/token_length_boxplot.png}
   \caption{\textbf{Token-length distribution per language.} Each box plot summarizes token-length quantiles for one language using a box summary (box: p25--p75; whiskers: p10--p90; median marked).}
   \label{fig:aurabench-len-by-lang}
 \end{figure*}
@@ -1989,9 +1897,6 @@ Our evaluation protocol is specified in Section~\ref{subsec:eval-protocol}, incl
 We evaluate off-the-shelf models without task-specific fine-tuning to ensure comparability (Section~\ref{subsec:eval-protocol}).
 Accordingly, there is no hyperparameter search for model training in the reported baselines.
 All evaluation-side parameters (e.g., $K$ for Success@K/Recall@K/nDCG@K; candidate pool construction; negative sampling options, if enabled) are fixed and implemented in the released evaluation toolkit (Section~\ref{subsec:eval-protocol}).
-
-Please make the table in a more standard and coherent format in my research paper.
-Fix the "1" issue with other notation represenation
 
 \subsection{Descriptive Statistics}
 \label{sec:checklist-c3}

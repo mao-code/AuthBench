@@ -30,4 +30,5 @@ pip install -r requirements.txt
 See `DATASET.md` for the full list of upstream datasets and references.
 
 ## Processing pipeline
-See `processing/README.md`, `processing/FLOW.md`, and `processing/PROCESSING.md` for the end-to-end data build instructions.
+The current pipeline has five stages: Build & Normalization, Quality Filtering, Redundancy Reduction, Language Audit, and Bucket Balanced Sampling.
+See `processing/README.md` and `processing/PROCESSING.md` for the current end-to-end data build instructions.

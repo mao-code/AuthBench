@@ -6,6 +6,7 @@ import argparse
 import hashlib
 import json
 import math
+import textwrap
 from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Iterable, Sequence
@@ -119,6 +120,28 @@ def hhi(values: Sequence[float]) -> float:
 def lighten_color(color: object, amount: float) -> tuple[float, float, float]:
     rgb = np.asarray(mcolors.to_rgb(color), dtype=float)
     return tuple(rgb + (1.0 - rgb) * amount)
+
+
+def prettify_label(label: object) -> str:
+    if label is None or (isinstance(label, float) and pd.isna(label)):
+        return "unknown"
+    text = str(label).strip()
+    if not text:
+        return "unknown"
+    return text.replace("_", " ")
+
+
+def wrap_label(label: object, *, width: int = 18, max_lines: int = 2) -> str:
+    text = prettify_label(label)
+    wrapped = textwrap.wrap(text, width=width, break_long_words=False, break_on_hyphens=False)
+    if not wrapped:
+        return text
+    if len(wrapped) > max_lines:
+        kept = wrapped[: max_lines - 1]
+        tail = " ".join(wrapped[max_lines - 1 :])
+        kept.append(textwrap.shorten(tail, width=width, placeholder="..."))
+        wrapped = kept
+    return "\n".join(wrapped)
 
 
 def content_hash(text: str | None) -> str:
@@ -384,34 +407,61 @@ def plot_pie_chart(
         .assign(pct_docs=lambda df: df["docs"] / df["docs"].sum() * 100.0)
     )
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    plt.figure(figsize=(8.5, 8.5))
-    wedges, _, autotexts = plt.pie(
+    fig, (ax, legend_ax) = plt.subplots(
+        1,
+        2,
+        figsize=(13.2, 8.8),
+        gridspec_kw={"width_ratios": [1.05, 0.95]},
+        constrained_layout=True,
+    )
+    cmap = plt.get_cmap("tab20")
+    colors = [cmap(i % cmap.N) for i in range(len(plot_df))]
+    wedges, _ = ax.pie(
         plot_df["docs"],
         labels=None,
         startangle=90,
         counterclock=False,
-        autopct=lambda pct: f"{pct:.1f}%" if pct >= 2 else "",
-        pctdistance=0.75,
-        wedgeprops={"width": 0.5, "edgecolor": "white", "linewidth": 1.2},
+        autopct=None,
+        pctdistance=0.70,
+        colors=colors,
+        wedgeprops={"width": 0.80, "edgecolor": "white", "linewidth": 1.6},
+        textprops={"color": "#1f1f1f", "fontweight": "semibold"},
     )
-    for text in autotexts:
-        text.set_fontsize(10)
-    legend_labels = [
-        f"{label} ({int(docs):,}, {pct:.1f}%)"
-        for label, docs, pct in plot_df[["label", "docs", "pct_docs"]].itertuples(index=False)
-    ]
-    plt.legend(
-        wedges,
-        legend_labels,
-        title="Breakdown",
-        loc="center left",
-        bbox_to_anchor=(1.02, 0.5),
-        frameon=False,
-    )
-    plt.title(title)
-    plt.tight_layout()
-    plt.savefig(output_path, dpi=300)
-    plt.close()
+    del wedges
+    ax.set_title(title, fontsize=16, fontweight="bold", pad=18)
+    legend_ax.axis("off")
+    legend_ax.set_xlim(0, 1)
+    legend_ax.set_ylim(0, 1)
+
+    y = 0.94
+    for idx, row in enumerate(plot_df.itertuples(index=False)):
+        label = wrap_label(row.label, width=18, max_lines=2)
+        legend_ax.add_patch(
+            Rectangle((0.04, y - 0.020), 0.036, 0.036, facecolor=colors[idx], edgecolor="none")
+        )
+        legend_ax.text(
+            0.11,
+            y + 0.004,
+            label,
+            fontsize=14,
+            fontweight="bold",
+            va="center",
+            color="#111111",
+        )
+        legend_ax.text(
+            0.11,
+            y - 0.060,
+            f"{row.pct_docs:.1f}%  |  {format_int(row.docs)} docs",
+            fontsize=11.5,
+            va="center",
+            color="#3a3a3a",
+        )
+        y -= 0.135
+        if y < 0.10:
+            break
+
+    fig.savefig(output_path, dpi=300, bbox_inches="tight", facecolor="white")
+    plt.close(fig)
     return plot_df
 
 
@@ -447,8 +497,8 @@ def plot_nested_genre_donut(
     docs: pd.DataFrame,
     output_path: Path,
     *,
-    max_primary_genres: int = 10,
-    max_subgenres_per_primary: int = 8,
+    max_primary_genres: int = 5,
+    max_subgenres_per_primary: int = 4,
     legend_subgenres_per_primary: int = 3,
 ) -> pd.DataFrame:
     work = docs.copy()
@@ -511,21 +561,11 @@ def plot_nested_genre_donut(
     detail_df = pd.DataFrame(detail_rows).sort_values(["docs", "primary_genre_plot"], ascending=[False, True])
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    fig, (ax, legend_ax) = plt.subplots(
-        1,
-        2,
-        figsize=(18, 11),
-        gridspec_kw={"width_ratios": [1.15, 0.85]},
-    )
-
-    primary_pct = primary_counts / total_docs * 100.0
-    inner_wedge_labels = [
-        f"{label}\n{primary_pct[label]:.1f}%"
-        if primary_pct[label] >= 4.0
-        else ""
-        for label in inner_labels
-    ]
-
+    fig = plt.figure(figsize=(18.5, 10.5), constrained_layout=True)
+    gs = fig.add_gridspec(1, 3, width_ratios=[0.95, 1.15, 0.95])
+    left_legend_ax = fig.add_subplot(gs[0, 0])
+    ax = fig.add_subplot(gs[0, 1])
+    right_legend_ax = fig.add_subplot(gs[0, 2])
     ax.pie(
         outer_values,
         radius=1.0,
@@ -533,82 +573,99 @@ def plot_nested_genre_donut(
         startangle=90,
         counterclock=False,
         colors=outer_colors,
-        wedgeprops={"width": 0.28, "edgecolor": "white", "linewidth": 1.4},
+        wedgeprops={"width": 0.40, "edgecolor": "white", "linewidth": 1.5},
     )
     ax.pie(
         inner_values,
-        radius=0.72,
-        labels=inner_wedge_labels,
+        radius=0.60,
+        labels=None,
         startangle=90,
         counterclock=False,
         colors=inner_colors,
-        wedgeprops={"width": 0.28, "edgecolor": "white", "linewidth": 1.0},
-        labeldistance=0.62,
-        textprops={"fontsize": 10, "fontweight": "bold"},
+        wedgeprops={"width": 0.40, "edgecolor": "white", "linewidth": 1.2},
+        labeldistance=0.55,
+        textprops={"fontsize": 10.5, "fontweight": "bold", "color": "#202020"},
     )
-    ax.set_title("Primary genre and subgenre distribution")
-    legend_ax.axis("off")
-    legend_ax.set_xlim(0, 1)
-    legend_ax.set_ylim(0, 1)
-    y = 0.96
+    ax.set_title("Primary genre and subgenre distribution", fontsize=17, fontweight="bold", pad=18)
     primary_summary = (
         detail_df.groupby("primary_genre_plot", as_index=False)
         .agg(primary_docs=("docs", "sum"))
         .sort_values("primary_docs", ascending=False)
     )
-    for row in primary_summary.itertuples(index=False):
-        primary_label = row.primary_genre_plot
-        primary_docs = int(row.primary_docs)
-        primary_pct_value = safe_div(primary_docs, total_docs) * 100.0
-        primary_color = primary_color_map[primary_label]
-        legend_ax.add_patch(
-            Rectangle((0.03, y - 0.018), 0.03, 0.03, facecolor=primary_color, edgecolor="none")
-        )
-        legend_ax.text(
-            0.08,
-            y,
-            f"{primary_label} ({primary_pct_value:.1f}%)",
-            fontsize=11,
-            fontweight="bold",
-            va="center",
-        )
-        y -= 0.055
-        top_subgenres = (
-            detail_df[detail_df["primary_genre_plot"] == primary_label]
-            .sort_values("docs", ascending=False)
-            .head(legend_subgenres_per_primary)
-        )
-        for sub_idx, sub_row in enumerate(top_subgenres.itertuples(index=False)):
-            legend_ax.add_patch(
-                Rectangle(
-                    (0.08, y - 0.014),
-                    0.022,
-                    0.022,
-                    facecolor=lighten_color(primary_color, 0.18 + 0.18 * sub_idx),
-                    edgecolor="none",
-                )
-            )
-            legend_ax.text(
-                0.12,
-                y,
-                f"{sub_row.genre_plot} ({sub_row.pct_docs:.1f}%)",
-                fontsize=9.5,
-                va="center",
-            )
-            y -= 0.038
-        y -= 0.02
-        if y < 0.06:
-            break
 
-    legend_ax.text(
-        0.03,
-        0.02,
-        "Legend percentages are shares of the full benchmark.",
-        fontsize=9,
-        color="#555555",
-    )
-    fig.tight_layout()
-    plt.savefig(output_path, dpi=300)
+    def _draw_grouped_legend(axis: plt.Axes, rows: list[pd.Series | object]) -> None:
+        axis.axis("off")
+        axis.set_xlim(0, 1)
+        axis.set_ylim(0, 1)
+        y = 0.93
+        for row in rows:
+            primary_label = row.primary_genre_plot
+            primary_docs = int(row.primary_docs)
+            primary_pct_value = safe_div(primary_docs, total_docs) * 100.0
+            primary_color = primary_color_map[primary_label]
+            axis.add_patch(
+                Rectangle((0.05, y - 0.018), 0.040, 0.040, facecolor=primary_color, edgecolor="none")
+            )
+            axis.text(
+                0.13,
+                y + 0.010,
+                wrap_label(primary_label, width=14, max_lines=2),
+                fontsize=17,
+                fontweight="bold",
+                va="center",
+                color="#111111",
+            )
+            axis.text(
+                0.13,
+                y - 0.065,
+                f"({primary_pct_value:.1f}%)",
+                fontsize=17,
+                fontweight="bold",
+                va="center",
+                color="#111111",
+            )
+            y -= 0.135
+            top_subgenres = (
+                detail_df[detail_df["primary_genre_plot"] == primary_label]
+                .sort_values("docs", ascending=False)
+                .head(legend_subgenres_per_primary)
+            )
+            for sub_idx, sub_row in enumerate(top_subgenres.itertuples(index=False)):
+                axis.add_patch(
+                    Rectangle(
+                        (0.08, y - 0.011),
+                        0.024,
+                        0.024,
+                        facecolor=lighten_color(primary_color, 0.18 + 0.18 * sub_idx),
+                        edgecolor="none",
+                    )
+                )
+                axis.text(
+                    0.13,
+                    y + 0.010,
+                    wrap_label(sub_row.genre_plot, width=18, max_lines=2),
+                    fontsize=11.5,
+                    va="center",
+                    color="#222222",
+                )
+                axis.text(
+                    0.13,
+                    y - 0.040,
+                    f"({sub_row.pct_docs:.1f}%)",
+                    fontsize=11.5,
+                    va="center",
+                    color="#3d3d3d",
+                )
+                y -= 0.105
+            y -= 0.035
+            if y < 0.12:
+                break
+
+    rows = list(primary_summary.itertuples(index=False))
+    midpoint = math.ceil(len(rows) / 2)
+    _draw_grouped_legend(left_legend_ax, rows[:midpoint])
+    _draw_grouped_legend(right_legend_ax, rows[midpoint:])
+    fig.savefig(output_path, dpi=300, bbox_inches="tight", facecolor="white")
     plt.close(fig)
     return detail_df
 

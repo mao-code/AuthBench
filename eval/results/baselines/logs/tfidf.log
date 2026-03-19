@@ -1,0 +1,4 @@
+
+=== Running baseline: tfidf on split=test ===
+
+Wrote baseline metrics to eval/results/baselines/tfidf.json

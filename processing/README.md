@@ -8,7 +8,7 @@ Recommended entrypoint:
 python -m processing.construct_benchmark ...
 ```
 
-It runs one unified pipeline with multiple processing stages (build, quality filtering, dedup, language audit, final sampling/split) plus monitoring.
+It runs one unified pipeline with five stages: Build & Normalization, Quality Filtering, Redundancy Reduction, Language Audit, and Bucket Balanced Sampling, plus monitoring.
 
 ## CLI
 
@@ -38,8 +38,8 @@ Key flags:
 - `--work-dir`: optional persistent intermediate-work directory (otherwise temporary and auto-cleaned).
 - `--report-path`: unified monitoring report path.
 - `--sanity-check` + `--sanity-limit`: cap records per dataset for quick validation.
-- `--total-docs`: global target size for the build stage (defaults to 100k).
-- `--post-target-total`: final target after quality filtering/dedup.
+- `--total-docs`: final benchmark target when `--post-target-total` is not provided.
+- `--post-target-total`: final target after quality filtering and redundancy reduction.
 - `--train-ratio/--dev-ratio/--test-ratio`: split ratios (default 0.8/0.1/0.1).
 - `--allow-other-languages`: fill leftover budget with non-target languages.
 - `--max-chunk-tokens` / `--target-chunk-tokens` / `--min-chunk-tokens`: chunking controls.
@@ -60,8 +60,11 @@ Outputs per split (`train|dev|test`):
 
 ## Dataset manifest
 
-See `datasets_manifest.example.json` for a template. Each entry needs:
+See `processing/datasets_manifest.json` and
+`processing/second_phase_web_crawling/datasets_manifest.json` for the current
+manifest structure. Each entry needs:
 - `loader`: one of `jsonl`, `csv`, `tsv`, `hf_streaming`.
+  The current code also supports `blog_authorship`.
 - `path`: local file path (for tabular/jsonl) or HF dataset name via `extra.hf_dataset`.
 - `split`: HF split when using `hf_streaming`.
 - `text_field`, `author_field`, `lang_field` (or `static_lang`), optional `genre_field`, `raw_id_field`.
@@ -69,13 +72,10 @@ See `datasets_manifest.example.json` for a template. Each entry needs:
 
 ## Processing steps implemented
 
-- Standardizes genres using the mapping in `PROCESSING.md` (Section 6).
-- Tokenizes with `tiktoken` (`cl100k_base`) when available; falls back to whitespace.
-- Splits long docs (>500 tokens) into 100–500 token chunks, preserving author/source/genre.
-- Dirty data filters (unique token ratio, symbol ratio, dominant token ratio, zero-length) with logging to `dirty_docs.log`.
-- Enforces 3–5 docs per author (Section 9) with a fallback down to 2 when data are scarce.
-- Post-filters noisy text (spacing/script/language heuristics), then performs exact/near-text and near-author dedup.
-- Runs an automated language audit, retags high-confidence mismatches, and emits manual-review suspects.
-- Samples to language, genre, and length-bucket targets (Sections 5, 8, 12) up to the global doc budget.
-- Deterministic train/dev/test split per language (Section 4) and IR files for queries/candidates/ground truth (Section 15).
+- Stage 1: Build & Normalization standardizes source rows into the shared schema, tokenizes with `tiktoken` (`cl100k_base`), chunks long docs, applies first-pass dirty filtering, and enforces 3-5 docs per author with a fallback down to 2 when data are scarce.
+- Stage 2: Quality Filtering cleans spacing and script artifacts, recomputes token statistics, and removes low-information or mismatched text.
+- Stage 3: Redundancy Reduction performs exact/near-text dedup plus optional near-author dedup.
+- Stage 4: Language Audit retags or drops high-confidence language mismatches and emits manual-review suspects.
+- Stage 5: Bucket Balanced Sampling applies language, genre, and length-bucket targets, then writes deterministic train/dev/test retrieval files.
+- Standardizes genres using the mapping in `processing/config.py`.
 - Writes one unified monitoring report so stage-by-stage stats do not require a separate monitor run.

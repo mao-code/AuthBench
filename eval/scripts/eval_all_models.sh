@@ -24,6 +24,42 @@ WANDB_PROJECT="${WANDB_PROJECT:-AuthBench}"
 WANDB_ENTITY="${WANDB_ENTITY:-}"
 WANDB_RUN_PREFIX="${WANDB_RUN_PREFIX:-eval-all}"
 WANDB_TAGS="${WANDB_TAGS:-AuthBench eval-all}"
+HEARTBEAT_INTERVAL="${HEARTBEAT_INTERVAL:-1800}"
+
+timestamp() {
+  date "+%Y-%m-%d %H:%M:%S"
+}
+
+log() {
+  echo "[$(timestamp)] $*"
+}
+
+warn() {
+  echo "[$(timestamp)] [WARN] $*" >&2
+}
+
+run_with_heartbeat() {
+  local log_path="$1"
+  shift
+
+  : >"${log_path}"
+  "$@" >>"${log_path}" 2>&1 &
+  local cmd_pid=$!
+  local start_time
+  start_time=$(date +%s)
+
+  while kill -0 "${cmd_pid}" 2>/dev/null; do
+    sleep "${HEARTBEAT_INTERVAL}"
+    if kill -0 "${cmd_pid}" 2>/dev/null; then
+      local now elapsed
+      now=$(date +%s)
+      elapsed=$((now - start_time))
+      log "Still running (pid=${cmd_pid}, elapsed=${elapsed}s). Current log: ${log_path}"
+    fi
+  done
+
+  wait "${cmd_pid}"
+}
 
 if [[ -n "${MODELS:-}" ]]; then
   # Allow overriding via `MODELS="m1 m2 ..."`.
@@ -99,6 +135,8 @@ else
 fi
 
 mkdir -p "${OUTPUT_DIR}"
+LOG_DIR="${LOG_DIR:-${OUTPUT_DIR}/logs}"
+mkdir -p "${LOG_DIR}"
 
 COMMON_ARGS=(
   --task "${TASK}"
@@ -149,20 +187,34 @@ if [[ -n "${WANDB_PROJECT:-}" ]]; then
   fi
 fi
 
+TOTAL_MODELS="${#MODEL_LIST[@]}"
+log "Starting model evaluation run."
+log "Models=${TOTAL_MODELS} split=${SPLIT} task=${TASK} dataset_root=${DATASET_ROOT} output_dir=${OUTPUT_DIR} log_dir=${LOG_DIR}"
+
+MODEL_INDEX=0
 for MODEL in "${MODEL_LIST[@]}"; do
-  echo ">>> Evaluating ${MODEL} on split=${SPLIT} ..."
+  MODEL_INDEX=$((MODEL_INDEX + 1))
+  log "[${MODEL_INDEX}/${TOTAL_MODELS}] Evaluating model=${MODEL} split=${SPLIT}"
   OUTPUT_PATH="${OUTPUT_DIR}/${MODEL//\//_}.json"
+  LOG_PATH="${LOG_DIR}/${MODEL//\//_}.log"
   RUN_ARGS=("${COMMON_ARGS[@]}")
   if [[ -n "${WANDB_PROJECT:-}" ]]; then
     RUN_ARGS+=(--wandb-run-name "${WANDB_RUN_PREFIX}-${MODEL}")
   fi
-  if ! python -m eval.runner \
-    "${RUN_ARGS[@]}" \
-    --models "${MODEL}" \
-    --output-json "${OUTPUT_PATH}"
+  START_TS=$(date +%s)
+  log "Writing model log to ${LOG_PATH}"
+  if ! run_with_heartbeat "${LOG_PATH}" \
+    python -m eval.runner \
+      "${RUN_ARGS[@]}" \
+      --models "${MODEL}" \
+      --output-json "${OUTPUT_PATH}"
   then
-    echo "[WARN] Evaluation failed for ${MODEL}; skipping." >&2
+    warn "Evaluation failed for ${MODEL}; skipping. Last log lines:"
+    tail -n 20 "${LOG_PATH}" >&2 || true
     continue
   fi
-  echo "Saved metrics (with fine-grained breakdowns) to ${OUTPUT_PATH}"
+  END_TS=$(date +%s)
+  log "Finished model=${MODEL} in $((END_TS - START_TS))s. Metrics saved to ${OUTPUT_PATH}"
 done
+
+log "Completed model evaluation run."
