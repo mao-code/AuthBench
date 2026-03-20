@@ -28,8 +28,11 @@ LANG_AUDIT_MAX_SUSPECTS="${LANG_AUDIT_MAX_SUSPECTS:-5000}"
 OUTPUT_DIR="${OUTPUT_DIR:-processing/outputs/pipeline_${RUN_TAG}}"
 REPORT_PATH="${REPORT_PATH:-${OUTPUT_DIR}/pipeline_dynamics.json}"
 
-DATASET_MAX_DOCS="${DATASET_MAX_DOCS:-}"
-NO_SHUFFLE_DATASETS="${NO_SHUFFLE_DATASETS:-}"
+DEFAULT_PD_BOOK_DATASETS="french_pd_books german_pd russian_pd spanish_pd_books"
+DEFAULT_PD_BOOK_CAPS="french_pd_books=10000 german_pd=10000 russian_pd=10000 spanish_pd_books=10000"
+
+DATASET_MAX_DOCS="${DATASET_MAX_DOCS:-$DEFAULT_PD_BOOK_CAPS}"
+NO_SHUFFLE_DATASETS="${NO_SHUFFLE_DATASETS:-$DEFAULT_PD_BOOK_DATASETS}"
 
 CMD=(
   "$PYTHON_BIN" -m processing.construct_benchmark

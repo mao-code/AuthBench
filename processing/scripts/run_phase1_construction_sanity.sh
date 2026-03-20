@@ -29,8 +29,11 @@ OUTPUT_DIR="${OUTPUT_DIR:-processing/outputs/pipeline_${RUN_TAG}}"
 REPORT_PATH="${REPORT_PATH:-${OUTPUT_DIR}/pipeline_dynamics.json}"
 
 AUTO_FETCH_LOCAL_SOURCES="${AUTO_FETCH_LOCAL_SOURCES:-0}"
-DATASET_MAX_DOCS="${DATASET_MAX_DOCS:-}"
-NO_SHUFFLE_DATASETS="${NO_SHUFFLE_DATASETS:-}"
+DEFAULT_PD_BOOK_DATASETS="french_pd_books german_pd russian_pd spanish_pd_books"
+DEFAULT_PD_BOOK_CAPS="french_pd_books=${SANITY_LIMIT} german_pd=${SANITY_LIMIT} russian_pd=${SANITY_LIMIT} spanish_pd_books=${SANITY_LIMIT}"
+
+DATASET_MAX_DOCS="${DATASET_MAX_DOCS:-$DEFAULT_PD_BOOK_CAPS}"
+NO_SHUFFLE_DATASETS="${NO_SHUFFLE_DATASETS:-$DEFAULT_PD_BOOK_DATASETS}"
 
 if [[ "$AUTO_FETCH_LOCAL_SOURCES" == "1" ]]; then
   echo "Fetching any missing local phase-1 sources before sanity run..."
