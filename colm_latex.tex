@@ -25,6 +25,7 @@
 \definecolor{mygray}{HTML}{4D4D50}
 \definecolor{myblue}{HTML}{7EA6E0}
 \definecolor{darkblue}{rgb}{0, 0, 0.5}
+\definecolor{editred}{RGB}{180,0,0}
 \hypersetup{colorlinks=true, citecolor=darkblue, linkcolor=darkblue, urlcolor=darkblue}
 \colorlet{red}{black}
 
@@ -42,6 +43,7 @@
   \texttt{email@domain} \\}
 
 \newcommand{\rev}[1]{#1}
+\newcommand{\rededit}[1]{{\color{editred}#1}}
 \newcommand{\ind}[1]{\mathbf{1}\!\left[#1\right]}
 \newcommand{\maybe}{\ensuremath{\circ}}
 \newcommand{\rot}[1]{\rotatebox{90}{\strut #1}}
@@ -110,7 +112,7 @@
 \maketitle
 
 \begin{abstract}
-We introduce AuthBench, a large-scale multilingual benchmark for Authorship Representation, enabling evaluation of authorship Attribution and Verification across numerous genres and lengths. AuthBench contains \rev{409,346 documents} of diverse lengths (short, medium, long, and extra-long), authored by \rev{149,344 individuals} across ten widely used languages (en, zh, hi, es, fr, ar, ru, de, ja, ko), spanning \rev{6 primary genres} with \rev{62 fine-grained subgenres}. AuthBench supports two complementary evaluations: (i) \emph{authorship attribution}, operationalized as same-author document retrieval, scored by Success@K, Recall@K, and nDCG@K; and (ii) \emph{authorship verification}, i.e., same-author binary decisions over query--candidate pairs, scored by equal error rate (EER) \rev{and ROC-AUC}. We comprehensively evaluate state-of-the-art (SOTA) instruction-tuned and embedding models on AuthBench. Experiments with SOTA models show that performance remains far from saturated: the best Success@5 reaches only 0.542, and the best overall EER is 0.078. Moreover, SOTA models exhibit substantial performance variation across languages, document lengths, and genres, highlighting persistent challenges for robust authorship modeling. We release AuthBench along with its evaluation toolkit anonymously at \url{https://anonymous.4open.science/r/AURA_Bench-366E/README.md}.
+We introduce AuthBench, a large-scale multilingual benchmark for Authorship Representation, enabling evaluation of authorship Attribution and Verification across numerous genres and lengths. AuthBench contains \rededit{428,150 documents} of diverse lengths (short, medium, long, and extra-long), authored by \rededit{153,825 individuals} across ten widely used languages (en, zh, hi, es, fr, ar, ru, de, ja, ko), spanning \rededit{9 primary genres} with \rededit{66 fine-grained genres}. AuthBench supports two complementary evaluations: (i) \emph{authorship attribution}, operationalized as same-author document retrieval, scored by Success@K, Recall@K, and nDCG@K; and (ii) \emph{authorship verification}, i.e., same-author binary decisions over query--candidate pairs, scored by equal error rate (EER) \rev{and ROC-AUC}. We comprehensively evaluate state-of-the-art (SOTA) instruction-tuned and embedding models on AuthBench. Experiments with SOTA models show that performance remains far from saturated: the best Success@5 reaches only 0.542, and the best overall EER is 0.078. Moreover, SOTA models exhibit substantial performance variation across languages, document lengths, and genres, highlighting persistent challenges for robust authorship modeling. We release AuthBench along with its evaluation toolkit anonymously at \url{https://anonymous.4open.science/r/AURA_Bench-366E/README.md}.
 \end{abstract}
 
 \section{Introduction}
@@ -217,14 +219,14 @@ Comparison of our AuthBench with existing authorship benchmarks.}
 \textbf{SMAuC} & 2023 & 5.66M auth.; 3.36M publications & Scientific writing; explicit bins from abstracts to books/dissertations & N/Y/Y & Adapted & One of the few domain-specific resources with explicit length-binning \citep{bevendorff2023smauc}. \\
 \textbf{AIDBench} & 2024 & 5 English component datasets; 3{,}249 sampled authors in total & Papers, emails, blogs, reviews, opinion; short-to-long texts & N/Y/N & ID & LLM benchmark for one-to-one and one-to-many identification rather than classical AA/AV \citep{wen2024aidbench}. \\
 \midrule
-\textbf{AuthBench (ours)} & -- & \rev{149{,}344 auth.; 409{,}346 docs} & \rev{10 languages, 6 primary genres, 4 length buckets} & Y/Y/Y & AA+AV & Unified multilingual benchmark with standardized splits and a shared evaluation toolkit. \\
+\textbf{AuthBench (ours)} & -- & \rededit{153{,}825 auth.; 428{,}150 docs} & \rededit{10 languages, 9 primary genres, 4 length buckets} & Y/Y/Y & AA+AV & Unified multilingual benchmark with standardized splits and a shared evaluation toolkit. \\
 \bottomrule
 \end{tabular}
 \caption{\textbf{Comparison of authorship resources and benchmarks.} ``Cov.'' denotes multilingual / multi-genre / explicit length control. ``Task'' reports the canonical authorship use: native attribution/verification benchmarks are distinguished from corpora mainly adapted for authorship and from one-to-one / one-to-many identification benchmarks. $^\dagger$Blogs50 is a derived subset of the 2006 Blog Authorship Corpus rather than an independently released corpus.}
 \label{tab:bench-comparison}
 \end{table*}
 
-To overcome the above limitations of existing benchmarks on authorship representation, we introduce AuthBench, a large-scale multilingual benchmark for Authorship Representation enabling Attribution and Verification across genres and document lengths. AuthBench is constructed from \rev{17 public sources in the current codebase configuration} (see Appendix~\ref{sec:appendix-raw-sources} for details). \rev{At a high level, the construction pipeline standardizes records from heterogeneous sources, filters noisy and mismatched text, removes duplicate content, audits language labels, and then balances the final release across languages, genres, and length buckets; 9 sources are retained in the current materialized output.} As a result, AuthBench comprises \rev{409,346} documents of diverse lengths (short, medium, long, and extra-long), authored by \rev{149,344} individuals across ten widely used languages (en, zh, hi, es, fr, ar, ru, de, ja, ko), spanning \rev{six primary genres} with \rev{62 fine-grained subgenres}. AuthBench supports two complementary evaluation tasks: (i) \emph{authorship attribution}, formulated as \rev{an open-world same-author} retrieval task evaluated with ranking-based metrics (Success@K, Recall@K, nDCG@K); and (ii) \emph{authorship verification}, formulated as binary decision over query--candidate pairs and evaluated \rev{with EER and ROC-AUC}. We release standardized dataset splits and a unified evaluation toolkit to facilitate reproducible and comprehensive evaluation.
+To overcome the above limitations of existing benchmarks on authorship representation, we introduce AuthBench, a large-scale multilingual benchmark for Authorship Representation enabling Attribution and Verification across genres and document lengths. AuthBench is constructed from \rededit{17 public sources in the current codebase configuration} (see Appendix~\ref{sec:appendix-raw-sources} for details). \rededit{At a high level, the construction pipeline standardizes records from heterogeneous sources, filters noisy and mismatched text, removes duplicate content, audits language labels, and then balances the final release across languages, genres, and length buckets; the current materialized export draws from all 17 configured sources.} As a result, AuthBench comprises \rededit{428,150} documents of diverse lengths (short, medium, long, and extra-long), authored by \rededit{153,825} individuals across ten widely used languages (en, zh, hi, es, fr, ar, ru, de, ja, ko), spanning \rededit{nine primary genres} with \rededit{66 fine-grained genres}. AuthBench supports two complementary evaluation tasks: (i) \emph{authorship attribution}, formulated as \rev{an open-world same-author} retrieval task evaluated with ranking-based metrics (Success@K, Recall@K, nDCG@K); and (ii) \emph{authorship verification}, formulated as binary decision over query--candidate pairs and evaluated \rev{with EER and ROC-AUC}. We release standardized dataset splits and a unified evaluation toolkit to facilitate reproducible and comprehensive evaluation.
 
 We conduct a comprehensive evaluation of the SOTA models on AuthBench, including embedding, instructed, and base LLMs. The evaluation results show that the best overall model performance of Success@5 on authorship attribution is 0.542, and the best overall model performance of EER on \rev{authorship verification} is 0.078. Moreover, SOTA models exhibit substantial performance variation across languages, document lengths, and genres, highlighting persistent challenges for robust authorship modeling.
 
@@ -249,12 +251,12 @@ In this section, we first describe the AuthBench construction in Section \ref{se
 \label{sec:construction}
 \rev{Figure~\ref{fig:processing_flow} illustrates the current AuthBench construction workflow. Starting from 17 public sources (Appendix~\ref{sec:appendix-raw-sources}), we build the benchmark with five stages: Build \& Normalization, Quality Filtering, Redundancy Reduction, Language Audit, and Bucket Balanced Sampling. Stage 1 converts each source into a shared schema, chunks overly long documents, and caps the number of documents per author. These steps make heterogeneous sources comparable, keep the pipeline memory-bounded, and prevent prolific authors from dominating the benchmark.}
 
-\rev{The remaining stages improve data quality and benchmark usability. Quality Filtering removes noisy, low-information, and script-mismatched text; Redundancy Reduction removes exact duplicates, near-text overlaps, and optional near-author overlaps to reduce leakage; and the Language Audit verifies or retags suspicious labels. Bucket Balanced Sampling then applies hierarchical targets over language, genre, and length bucket and writes stratified train/dev/test splits, so the release remains diverse, balanced, and reproducible. In the current materialized output, this pipeline retains 9 sources and yields 409{,}346 documents from 149{,}344 authors across 10 languages, 6 primary genres, and 4 length buckets. Complete implementation-aligned details are provided in Appendix~\ref{sec:appendix-construction-details}.}
+\rededit{The remaining stages improve data quality and benchmark usability. Quality Filtering removes noisy, low-information, and script-mismatched text; Redundancy Reduction removes exact duplicates, near-text overlaps, and optional near-author overlaps to reduce leakage; and the Language Audit verifies or retags suspicious labels. Bucket Balanced Sampling then applies hierarchical targets over language, genre, and length bucket and writes stratified train/dev/test splits, so the release remains diverse, balanced, and reproducible. In the current materialized output, the combined export contains 428{,}150 documents from 153{,}825 authors across 10 languages, 9 primary genres, and 4 length buckets, with 253{,}968 documents contributed by phase 1 and 174{,}182 by phase 2 after merge deduplication and exact cross-phase overlap removal. Complete implementation-aligned details are provided in Appendix~\ref{sec:appendix-construction-details}.}
 
 \subsection{Statistics of AuthBench}
 \label{sec:statbench}
 
-After construction, AuthBench comprises \rev{409{,}346 documents authored by 149{,}344 individuals} across 10 languages: English (en), Spanish (es), Chinese (zh), French (fr), German (de), Arabic (ar), Russian (ru), Japanese (ja), Korean (ko), and Hindi (hi). AuthBench spans \rev{6 primary genres}, including \rev{\texttt{social\_media}, \texttt{news}, \texttt{blog}, \texttt{literature}, \texttt{poetry}, and \texttt{qna}}. Documents in AuthBench are further categorized into four token-length buckets: short (1–10 tokens), medium (11–100), long (101–500), and extra-long ($>$500). An overview of AuthBench statistics is presented in Table~\ref{tab:aurabench-overview}. Additional detailed statistics are provided in Appendix~\ref{sec:appendix-additional-stats}.
+After construction, AuthBench comprises \rededit{428{,}150 documents authored by 153{,}825 individuals} across 10 languages: English (en), Spanish (es), Chinese (zh), French (fr), German (de), Arabic (ar), Russian (ru), Japanese (ja), Korean (ko), and Hindi (hi). AuthBench spans \rededit{9 primary genres}, including \rededit{\texttt{social\_media}, \texttt{literature}, \texttt{news}, \texttt{blog}, \texttt{media\_reviews}, \texttt{poetry}, \texttt{ecommerce\_reviews}, \texttt{qna}, and \texttt{research\_paper}}. \rededit{The distribution is dominated by \texttt{social\_media} (40.9\%), \texttt{literature} (30.0\%), and \texttt{news} (17.2\%), with the remaining six primary genres accounting for the final 11.9\% of documents.} Documents in AuthBench are further categorized into four token-length buckets: short (1–10 tokens), medium (11–100), long (101–500), and extra-long ($>$500). An overview of AuthBench statistics is presented in Table~\ref{tab:aurabench-overview}. \rededit{The current split materialization contains 198{,}345 query documents and 229{,}805 candidate documents, partitioned into train/dev/test as 156{,}335/21{,}008/21{,}002 queries and 186{,}184/21{,}813/21{,}808 candidates.} Additional detailed statistics are provided in Appendix~\ref{sec:appendix-additional-stats}.
 
 \begin{table}[t]
   \centering
@@ -264,29 +266,29 @@ After construction, AuthBench comprises \rev{409{,}346 documents authored by 149
     \textbf{Category} & \textbf{\#Docs} & \textbf{Share} \\
     \midrule
     \multicolumn{3}{l}{\textit{Overall}} \\
-    Total & \rev{409{,}346} & 100.0\% \\
+    Total & \rededit{428{,}150} & 100.0\% \\
     Languages & 10 & -- \\
-    Authors & \rev{149{,}344} & -- \\
-    Avg.\ docs per author & \rev{2.74} & -- \\
-    Genres (fine-grained) & 62 & -- \\
+    Authors & \rededit{153{,}825} & -- \\
+    Avg.\ docs per author & \rededit{2.78} & -- \\
+    Genres (fine-grained) & \rededit{66} & -- \\
     \midrule
     \multicolumn{3}{l}{\textit{By language}} \\
-    English (en) & \rev{115{,}229} & \rev{28.1\%} \\
-    Spanish (es) & \rev{32{,}198} & \rev{7.9\%} \\
-    Chinese (zh) & \rev{48{,}148} & \rev{11.8\%} \\
-    French (fr) & \rev{24{,}189} & \rev{5.9\%} \\
-    German (de) & \rev{34{,}237} & \rev{8.4\%} \\
-    Arabic (ar) & \rev{39{,}583} & \rev{9.7\%} \\
-    Russian (ru) & \rev{53{,}500} & \rev{13.1\%} \\
-    Japanese (ja) & \rev{21{,}673} & \rev{5.3\%} \\
-    Korean (ko) & \rev{33{,}954} & \rev{8.3\%} \\
-    Hindi (hi) & \rev{6{,}635} & \rev{1.6\%} \\
+    English (en) & \rededit{97{,}974} & \rededit{22.9\%} \\
+    Spanish (es) & \rededit{33{,}395} & \rededit{7.8\%} \\
+    Chinese (zh) & \rededit{55{,}368} & \rededit{12.9\%} \\
+    French (fr) & \rededit{31{,}225} & \rededit{7.3\%} \\
+    German (de) & \rededit{39{,}813} & \rededit{9.3\%} \\
+    Arabic (ar) & \rededit{42{,}091} & \rededit{9.8\%} \\
+    Russian (ru) & \rededit{66{,}084} & \rededit{15.4\%} \\
+    Japanese (ja) & \rededit{21{,}494} & \rededit{5.0\%} \\
+    Korean (ko) & \rededit{33{,}881} & \rededit{7.9\%} \\
+    Hindi (hi) & \rededit{6{,}825} & \rededit{1.6\%} \\
     \midrule
     \multicolumn{3}{l}{\textit{By length}} \\
-    Short & \rev{21{,}607} & \rev{5.3\%} \\
-    Medium & \rev{218{,}793} & \rev{53.4\%} \\
-    Long & \rev{160{,}814} & \rev{39.3\%} \\
-    Extra-long & \rev{8{,}132} & \rev{2.0\%} \\
+    Short & \rededit{24{,}476} & \rededit{5.7\%} \\
+    Medium & \rededit{211{,}910} & \rededit{49.5\%} \\
+    Long & \rededit{184{,}447} & \rededit{43.1\%} \\
+    Extra-long & \rededit{7{,}317} & \rededit{1.7\%} \\
     \bottomrule
   \end{tabular}
   \caption{Statistics of our AuthBench.}
@@ -296,7 +298,7 @@ After construction, AuthBench comprises \rev{409{,}346 documents authored by 149
 \subsection{Pipeline Summary}
 \begin{figure*}[h!]
   \centering
-  \safeincludegraphics[width=\textwidth]{latex/authbench_framework.pdf}
+  \safeincludegraphics[width=\textwidth]{authbench_framework.pdf}
   \caption{AuthBench construction pipeline. Full details are provided in Appendix~\ref{sec:appendix-construction-details}.}
   \label{fig:processing_flow}
 \end{figure*}
@@ -688,7 +690,7 @@ Throughout the training process, all models exhibit significant performance gain
 % We encourage additional safeguards in deployment settings, including access controls, user consent where applicable, and careful review for sensitive contexts.
 
 \section{Conclusion}
-In this work, we introduced \textbf{AuthBench}, a comprehensive benchmark designed to standardize the evaluation of authorship representation across diverse languages, genres, and document lengths. Our extensive evaluation demonstrates that while base LLMs currently provide the strongest stylistic signals—significantly outperforming traditional embedding models in complex scenarios—the task remains far from solved. Significant performance gaps persist, particularly in short context attribution and cross-genre generalization. Furthermore, our training experiments confirm that AuthBench serves as an effective substrate for domain adaptation, enabling models to better capture subtle authorship cues. We hope this resource facilitates future research into more robust, efficient, and universally adaptable authorship analysis.
+In this work, we introduced \textbf{AuthBench}, \rededit{a comprehensive benchmark spanning 428{,}150 documents from 153{,}825 authors across 10 languages, 9 primary genres, and four length buckets,} designed to standardize the evaluation of authorship representation across diverse languages, genres, and document lengths. Our extensive evaluation demonstrates that while base LLMs currently provide the strongest stylistic signals—significantly outperforming traditional embedding models in complex scenarios—the task remains far from solved. Significant performance gaps persist, particularly in short context attribution and cross-genre generalization. Furthermore, our training experiments confirm that AuthBench serves as an effective substrate for domain adaptation, enabling models to better capture subtle authorship cues. We hope this resource facilitates future research into more robust, efficient, and universally adaptable authorship analysis.
 
 \section*{Limitations} A primary limitation of this work is the uneven distribution of document lengths and genres across languages, which stems from the inherent characteristics of the public corpora utilized. We aim to address this distributional imbalance in future iterations by curating more balanced sources. Additionally, due to the large scale of AuthBench, manual verification was feasible only for a representative subset of the data. However, the robust training dynamics and performance gains demonstrated in Section~\ref{sec:dynamics} serve as strong empirical evidence of the dataset's high quality and effective labeling.
 In future work, we plan to further inspect all the examples in the benchmark.
@@ -704,7 +706,7 @@ In future work, we plan to further inspect all the examples in the benchmark.
 % Despite deduplication and filtering, residual topic, source, and formatting artifacts may persist and can introduce shortcut signals, particularly in slices with homogeneous domains.
 % Finally, while we evaluate verification via EER and retrieval via ranking metrics, deployment settings often require application-specific operating points, calibration procedures, and robustness checks against topic leakage and distribution shift; AuthBench is intended as a diagnostic benchmark rather than a complete substitute for application-grounded evaluation.
 
-\bibliography{custom}
+\bibliography{colm2026_conference}
 \bibliographystyle{colm2026_conference}
 
 \appendix
@@ -1708,21 +1710,21 @@ Figure~\ref{fig:aurabench_lang_s5_overall} to ~\ref{fig:aurabench_lang_eer@5_ove
 
 \begin{figure*}[h!]
   \centering
-  \safeincludegraphics[width=0.90\textwidth]{post_analysis/outputs/combined_phase1_phase2/statistics/figures/language_distribution.png}
+  \safeincludegraphics[width=0.90\textwidth]{post_analysis/outputs/authbench/statistics/figures/language_distribution.png}
   \caption{\textbf{Language distribution of AuthBench.} Bar heights show the number of documents per language.}
   \label{fig:aurabench-lang-dist}
 \end{figure*}
 
 \begin{figure*}[h!]
   \centering
-  \safeincludegraphics[width=\textwidth]{latex/genre_distribution_by_language_pies.pdf}
-  \caption{\textbf{Genre distribution per language.} Each subplot is one language.}
+  \safeincludegraphics[width=\textwidth]{post_analysis/outputs/authbench/statistics/figures/primary_genre_heatmap.png}
+  \caption{\textbf{Primary-genre distribution by language.} The heatmap shows document counts for each language--primary-genre slice in the current AuthBench export.}
   \label{fig:aurabench-genre-by-lang}
 \end{figure*}
 
 \begin{figure*}[h!]
   \centering
-  \safeincludegraphics[width=\textwidth]{post_analysis/outputs/combined_phase1_phase2/statistics/figures/token_length_boxplot.png}
+  \safeincludegraphics[width=\textwidth]{post_analysis/outputs/authbench/statistics/figures/token_length_boxplot.png}
   \caption{\textbf{Token-length distribution per language.} Each box plot summarizes token-length quantiles for one language using a box summary (box: p25--p75; whiskers: p10--p90; median marked).}
   \label{fig:aurabench-len-by-lang}
 \end{figure*}
@@ -1733,7 +1735,7 @@ Figure~\ref{fig:aurabench_lang_s5_overall} to ~\ref{fig:aurabench_lang_eer@5_ove
 \section{Raw Data Sources}
 \label{sec:appendix-raw-sources}
 
-{\color{red}The current codebase is configured with $17$ publicly available input sources spanning multiple platforms, domains, and languages. Each raw item is mapped into a unified schema (Section~\ref{sec:construction}) with provenance (\texttt{source\_id}), language (\texttt{lang}), a normalized genre label (\texttt{genre}), and token length $\ell(d)\in\mathbb{N}$ computed under a fixed tokenizer. Table~\ref{tab:raw-sources} lists all configured sources. Table~\ref{tab:retained-sources} reports the subset retained in the currently materialized combined output after filtering, redundancy reduction, cross-source overlap removal, and final selection.}
+{\color{red}The current codebase is configured with $17$ publicly available input sources spanning multiple platforms, domains, and languages. Each raw item is mapped into a unified schema (Section~\ref{sec:construction}) with provenance (\texttt{source\_id}), language (\texttt{lang}), a normalized genre label (\texttt{genre}), and token length $\ell(d)\in\mathbb{N}$ computed under a fixed tokenizer. Table~\ref{tab:raw-sources} lists all configured sources. \rededit{Table~\ref{tab:retained-sources} reports the realized source composition of the current materialized combined output; unlike the previous draft, all 17 configured sources are represented in the exported benchmark.}}
 
 \paragraph{Citation policy.}
 When a dataset has an associated peer-reviewed publication, we treat it as the canonical reference (e.g., MARC for Amazon Reviews Multi; Babel Briefings for multilingual headlines).
@@ -1794,27 +1796,35 @@ German PD Corpus & de & Literature/newspapers & 260k+ texts & Yes (metadata) &
 \small
 \setlength{\tabcolsep}{5pt}
 \renewcommand{\arraystretch}{1.12}
-\begin{tabular}{@{}ll@{}}
+\begin{tabular}{@{}lrr@{}}
 \toprule
-\textbf{Retained source} & \textbf{Primary contribution in the current combined filtered output} \\
+\textbf{Source} & \textbf{\#Docs} & \textbf{Share} \\
 \midrule
-Exorde & Social media \\
-Babel Briefings & News \\
-Blog Authorship Corpus & Blogs \\
-French PD Books & Literature \\
-German PD Corpus & Literature \\
-Project Gutenberg & Literature / essays / speeches \\
-Stack Exchange Data Dump / API crawl & Q\&A \\
-Wikisource & Literature / drama / speeches \\
-YouTube comments & Social media comments \\
+Exorde & \rededit{94{,}231} & \rededit{22.0\%} \\
+Wikisource & \rededit{78{,}984} & \rededit{18.4\%} \\
+Babel Briefings & \rededit{73{,}676} & \rededit{17.2\%} \\
+YouTube comments & \rededit{71{,}808} & \rededit{16.8\%} \\
+Blog Authorship Corpus & \rededit{22{,}494} & \rededit{5.3\%} \\
+Project Gutenberg & \rededit{18{,}739} & \rededit{4.4\%} \\
+Russian PD Corpus & \rededit{12{,}728} & \rededit{3.0\%} \\
+Douban Reviews & \rededit{10{,}424} & \rededit{2.4\%} \\
+Xiaohongshu / Weibo & \rededit{8{,}869} & \rededit{2.1\%} \\
+French PD Books & \rededit{8{,}761} & \rededit{2.0\%} \\
+German PD Corpus & \rededit{8{,}400} & \rededit{2.0\%} \\
+Spanish PD Books & \rededit{4{,}961} & \rededit{1.2\%} \\
+Amazon Reviews Multi (MARC) & \rededit{4{,}924} & \rededit{1.2\%} \\
+Stack Exchange Data Dump / API crawl & \rededit{4{,}651} & \rededit{1.1\%} \\
+Arabic Classical Poetry & \rededit{2{,}503} & \rededit{0.6\%} \\
+arXiv Abstracts (metadata snapshot) & \rededit{1{,}784} & \rededit{0.4\%} \\
+Hindi Discourse Stories & \rededit{213} & \rededit{0.0\%} \\
 \bottomrule
 \end{tabular}
-\caption{\textbf{Sources retained in the current combined filtered output.} In the materialized benchmark, 9 of the 17 configured sources remain after filtering, redundancy reduction, cross-source overlap removal, and final selection.}
+\caption{\textbf{Source composition of the current combined AuthBench export.} \rededit{All 17 configured sources are represented in the materialized benchmark; the table reports their realized document counts after filtering, redundancy reduction, cross-phase merge cleanup, and final selection.}}
 \label{tab:retained-sources}
 \end{table*}
 }
 
-{\color{red}The configured sources not retained in the current combined filtered output are Amazon Reviews Multi (MARC), arXiv Abstracts, Xiaohongshu / Weibo, Douban Reviews, Hindi Discourse Stories, Spanish PD Books, Arabic Classical Poetry, and the Russian PD Corpus.}
+{\color{red}\rededit{No configured source is entirely absent from the current combined filtered output; however, the realized source distribution is highly skewed, with Exorde, Wikisource, Babel Briefings, and YouTube comments together contributing 74.4\% of all documents.}}
 
 \begin{table*}[t]
 \small
