@@ -18,7 +18,7 @@ CANDIDATE_POOL="${CANDIDATE_POOL:-all}"
 MAX_TOPIC_CANDIDATES="${MAX_TOPIC_CANDIDATES:-}"
 TOPIC_SEED="${TOPIC_SEED:-13}"
 NEGATIVES_PER_QUERY="${NEGATIVES_PER_QUERY:-50}"
-NEGATIVE_STRATEGY="${NEGATIVE_STRATEGY:-all}"
+NEGATIVE_STRATEGY="${NEGATIVE_STRATEGY:-sample}"
 SEED="${SEED:-13}"
 
 NGRAM_MAX_TRAIN_EXAMPLES="${NGRAM_MAX_TRAIN_EXAMPLES:-120000}"
@@ -26,7 +26,7 @@ PPM_MAX_TRAIN_EXAMPLES="${PPM_MAX_TRAIN_EXAMPLES:-80000}"
 PPM_ORDER="${PPM_ORDER:-4}"
 PPM_HASH_FEATURES="${PPM_HASH_FEATURES:-8192}"
 PPM_ALPHA="${PPM_ALPHA:-0.5}"
-HEARTBEAT_INTERVAL="${HEARTBEAT_INTERVAL:-1800}"
+HEARTBEAT_INTERVAL="${HEARTBEAT_INTERVAL:-60}"
 
 timestamp() {
   date "+%Y-%m-%d %H:%M:%S"
@@ -95,6 +95,13 @@ fi
 TOTAL_BASELINES="${#BASELINE_LIST[@]}"
 log "Starting baseline evaluation run."
 log "Baselines=${TOTAL_BASELINES} split=${SPLIT} task=${TASK} dataset_root=${DATASET_ROOT} output_dir=${OUTPUT_DIR} log_dir=${LOG_DIR}"
+if [[ "${NEGATIVE_STRATEGY}" == "all" ]]; then
+  log "[WARN] NEGATIVE_STRATEGY=all can be extremely slow on AuthBench because verification scores every query against almost every candidate."
+  log "[WARN] Prefer NEGATIVE_STRATEGY=sample with NEGATIVES_PER_QUERY set explicitly unless you intentionally want exhaustive verification."
+fi
+if [[ -z "${MAX_QUERIES}" && -z "${MAX_CANDIDATES}" ]]; then
+  log "[INFO] Running on the full split. For a quick sanity check, set MAX_QUERIES and MAX_CANDIDATES."
+fi
 
 BASELINE_INDEX=0
 for BASELINE in "${BASELINE_LIST[@]}"; do

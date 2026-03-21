@@ -15,9 +15,10 @@ WANDB_TAGS="${WANDB_TAGS:-AuthBench train-all}"
 
 DATASET_ROOT="${DATASET_ROOT:-processing/outputs/authbench}"
 OUTPUT_DIR="${OUTPUT_DIR:-eval/results/training_summary}"
-BATCH_SIZE="${BATCH_SIZE:-1}"
+BATCH_SIZE="${BATCH_SIZE:-4}"
+GRAD_ACCUM="${GRAD_ACCUM:-32}"
 NUM_WORKERS="${NUM_WORKERS:-0}"
-EVAL_FRACTION="${EVAL_FRACTION:-0.5}"
+EVAL_FRACTION="${EVAL_FRACTION:-0.25}"
 EVAL_KS="${EVAL_KS:-5}"
 LORA_RANK="${LORA_RANK:-16}"
 LORA_DROPOUT="${LORA_DROPOUT:-0.0}"
@@ -44,8 +45,9 @@ else
 fi
 
 COMMON_ARGS=(
-  --epochs 2
+  --epochs 1
   --batch-size "$BATCH_SIZE"
+  --grad-accum "$GRAD_ACCUM"
   --num-workers "$NUM_WORKERS"
   --eval-fraction-epoch "$EVAL_FRACTION"
   --eval-every-epoch
