@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# sbatch -p rush --nodelist=rush-compute-01 --gres=gpu:1 --ntasks=1 --cpus-per-task=4 --mem=64G -t 720:00:00 eval/scripts/eval_all_baselines.sh
+
 export PYTHONPATH="$(pwd):${PYTHONPATH:-}"
 
 DATASET_ROOT="${DATASET_ROOT:-processing/outputs/combined_phase1_phase2}"

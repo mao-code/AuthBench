@@ -10,6 +10,7 @@ OUTPUT_ROOT="${OUTPUT_ROOT:-post_analysis/outputs/authbench}"
 SPLITS="${SPLITS:-all}"
 PHASE1_DIR="${PHASE1_DIR:-processing/outputs/pipeline_phase1_official}"
 PHASE2_DIR="${PHASE2_DIR:-processing/second_phase_web_crawling/outputs/pipeline_phase2_official}"
+RUN_LEAKAGE_AUDIT="${RUN_LEAKAGE_AUDIT:-1}"
 
 read -r -a SPLIT_ARGS <<<"${SPLITS}"
 
@@ -34,6 +35,13 @@ echo "  splits:  ${SPLITS}"
   --splits "${SPLIT_ARGS[@]}" \
   --phase1-dir "${PHASE1_DIR}" \
   --phase2-dir "${PHASE2_DIR}"
+
+if [[ "${RUN_LEAKAGE_AUDIT}" != "0" ]]; then
+  "${PYTHON_BIN}" -m post_analysis.leakage_audit \
+    --dataset-dir "${DATASET_DIR}" \
+    --output-dir "${OUTPUT_ROOT}/leakage_audit" \
+    --splits "${SPLIT_ARGS[@]}"
+fi
 
 echo "AuthBench analysis complete."
 echo "Artifacts written to ${OUTPUT_ROOT}"

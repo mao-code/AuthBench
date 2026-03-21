@@ -19,7 +19,9 @@ post_analysis/
 ├── qualitative_analysis.py
 ├── analyze_benchmarks.py
 ├── authorship_benchmark_analysis.py
+├── leakage_audit.py
 ├── plot_results.py
+├── run_authbench_analysis.sh
 ├── run_combined_phase1_phase2_analysis.sh
 ├── run_analyze_benchmarks.sh
 └── outputs/
@@ -28,7 +30,7 @@ post_analysis/
     └── phase1_official_plus_phase2_all4_all_docs/  # legacy combined run already present in the repo
 ```
 
-`analyze_dataset.py`, `qualitative_analysis.py`, and `analyze_benchmarks.py` are the benchmark-analysis entry points. `plot_results.py` is separate: it plots model evaluation results and can also reuse exported dataset-analysis CSVs. `OUTPUT_LAYOUT.md` documents the intended structure of generated result folders.
+`analyze_dataset.py`, `qualitative_analysis.py`, `authorship_benchmark_analysis.py`, and `leakage_audit.py` are the main benchmark-analysis entry points. `plot_results.py` is separate: it plots model evaluation results and can also reuse exported dataset-analysis CSVs. `OUTPUT_LAYOUT.md` documents the intended structure of generated result folders.
 
 ### What each script does
 
@@ -243,6 +245,29 @@ Outputs under `benchmark_profile/`:
 - `reports/topic_leakage_report.md`
   - Benchmark-specific leakage report plus recommended evaluation protocol.
 
+#### `leakage_audit.py`
+
+This is the reviewer-facing shortcut audit for one benchmark root. It is meant to answer challenges such as "is the benchmark solvable from language or topic metadata alone?" by producing explicit metadata-only baselines and topic-cluster pool diagnostics.
+
+Outputs under `leakage_audit/`:
+
+- `tables/positive_pair_alignment.csv`, `positive_pair_alignment_summary.json`
+  - Same-language, same-genre, same-source, and same-length rates for labeled query-positive pairs.
+- `tables/candidate_author_metadata_span.csv`, `candidate_author_metadata_span_summary.json`
+  - How specialized candidate authors are by language, genre, source, and length.
+- `tables/shortcut_pool_sizes_by_query.csv`
+  - Per-query author-pool sizes after conditioning on metadata-only schemes such as `language_only`, `language_fine_genre`, and `full_metadata`.
+- `tables/shortcut_pool_summary.csv`, `shortcut_pool_summary_by_language.csv`
+  - Summary metrics for metadata-only shortcut strength, including expected and deterministic `success@1/@5`.
+- `tables/topic_cluster_assignments.csv`, `topic_cluster_strata.csv`
+  - Topic-cluster assignments and per-stratum clustering diagnostics for `(language, primary_genre)` groups.
+- `tables/topic_shortcut_pool_sizes_by_query.csv`, `topic_alignment_by_language.csv`, `topic_shortcut_summary.json`
+  - Topic-cluster shortcut diagnostics, including same-topic positive-pair rates and matched-pool sizes under `(language, primary_genre, topic_cluster)`.
+- `reports/leakage_audit_report.md`
+  - Short human-readable interpretation of the main leakage metrics.
+- `summary.json`
+  - Compact machine-readable summary for downstream reporting.
+
 #### `plot_results.py`
 
 This script is for evaluation-result visualization, not benchmark-construction analysis. It reads evaluation outputs from `eval/results/` and optionally merges them with analysis CSVs.
@@ -362,6 +387,26 @@ python3 -m post_analysis.authorship_benchmark_analysis \
   --dataset-dir processing/outputs/combined_phase1_phase2 \
   --output-dir post_analysis/outputs/combined_phase1_phase2/benchmark_profile \
   --splits all
+
+python3 -m post_analysis.leakage_audit \
+  --dataset-dir processing/outputs/combined_phase1_phase2 \
+  --output-dir post_analysis/outputs/combined_phase1_phase2/leakage_audit \
+  --splits test
+```
+
+Run the AuthBench-specific bundle, including the leakage audit:
+
+```bash
+./post_analysis/run_authbench_analysis.sh
+```
+
+Equivalent explicit command:
+
+```bash
+python3 -m post_analysis.leakage_audit \
+  --dataset-dir processing/outputs/authbench \
+  --output-dir post_analysis/outputs/authbench/leakage_audit \
+  --splits test
 ```
 
 Run Phase 1 vs Phase 2 comparison:
@@ -392,5 +437,6 @@ python3 -m post_analysis.plot_results \
 ### Notes on current output folders
 
 - `post_analysis/outputs/combined_phase1_phase2/` is the recommended location for future combined-benchmark analysis runs.
+- `post_analysis/outputs/authbench/` is the recommended location for AuthBench-specific runs, including `statistics/`, `qualitative/`, `benchmark_profile/`, and `leakage_audit/`.
 - `post_analysis/outputs/phase1_vs_phase2/` is the recommended location for cross-benchmark comparisons.
 - `post_analysis/outputs/phase1_official_plus_phase2_all4_all_docs/` is an older combined-benchmark output already present in the repository. It is still useful, but it should be treated as a legacy run directory rather than the canonical name going forward.

@@ -9,7 +9,8 @@ post_analysis/outputs/
 ├── combined_phase1_phase2/
 │   ├── statistics/
 │   ├── qualitative/
-│   └── benchmark_profile/
+│   ├── benchmark_profile/
+│   └── leakage_audit/
 ├── phase1_vs_phase2/
 │   ├── per_benchmark/
 │   └── comparison/
@@ -23,6 +24,7 @@ Conventions:
   - `statistics/` for the main quantitative tables and figures
   - `qualitative/` for qualitative diagnostics and leakage checks
   - `benchmark_profile/` for the supplementary authorship-benchmark balance, stage-flow, and leakage-risk outputs
+  - `leakage_audit/` for the reviewer-facing topic/language shortcut audit and metadata-only baselines
 - Use `phase1_vs_phase2/` for side-by-side comparison outputs between:
   - `processing/outputs/pipeline_phase1_official`
   - `processing/second_phase_web_crawling/outputs/pipeline_phase2_official`

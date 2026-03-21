@@ -12,9 +12,9 @@ venv/
 .DS_Store
 .ipynb_checkpoints/
 
-# raw_analysis/*/data/*
+raw_analysis/*/data/*
 */outputs/*
-# eval/results/
+eval/results/
 wandb/
 
 **/outputs/**
