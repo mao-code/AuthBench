@@ -1,4 +1,10 @@
 #!/usr/bin/env python3
+# Run with:
+# python3 -m post_analysis.authorship_benchmark_analysis \
+#   --dataset-dir processing/outputs/authbench \
+#   --output-dir post_analysis/outputs/authbench/benchmark_profile \
+#   --phase1-dir processing/outputs/pipeline_phase1_official \
+#   --phase2-dir processing/second_phase_web_crawling/outputs/pipeline_phase2_official
 """Supplementary authorship-benchmark analysis for AuthBench datasets."""
 from __future__ import annotations
 
@@ -142,6 +148,49 @@ def wrap_label(label: object, *, width: int = 18, max_lines: int = 2) -> str:
         kept.append(textwrap.shorten(tail, width=width, placeholder="..."))
         wrapped = kept
     return "\n".join(wrapped)
+
+
+PAPER_LABEL_OVERRIDES = {
+    "en": "English",
+    "ru": "Russian",
+    "zh": "Chinese",
+    "ar": "Arabic",
+    "de": "German",
+    "ko": "Korean",
+    "es": "Spanish",
+    "fr": "French",
+    "ja": "Japanese",
+    "hi": "Hindi",
+    "extra_long": "Extra long",
+    "social_media": "Social media",
+    "media_reviews": "Media reviews",
+    "ecommerce_reviews": "E-commerce reviews",
+    "research_paper": "Research papers",
+    "youtube_comment": "YouTube comments",
+    "social_media/politics": "Politics",
+    "literature/speech_essay": "Speech / essay",
+    "literature/drama": "Drama",
+    "blog/indunk": "Indunk blog",
+    "blog/student": "Student blog",
+    "blog/technology": "Tech blog",
+    "media_reviews/douban": "Douban reviews",
+}
+
+
+def paper_label(label: object) -> str:
+    text = prettify_label(label)
+    normalized = text.replace(" ", "_")
+    if normalized in PAPER_LABEL_OVERRIDES:
+        return PAPER_LABEL_OVERRIDES[normalized]
+    if "/" in text:
+        parts = []
+        for part in text.split("/"):
+            normalized_part = prettify_label(part).replace(" ", "_")
+            parts.append(PAPER_LABEL_OVERRIDES.get(normalized_part, prettify_label(part).title()))
+        return " / ".join(parts)
+    if text == "other":
+        return "Other"
+    return text.title()
 
 
 def content_hash(text: str | None) -> str:
@@ -551,6 +600,7 @@ def plot_nested_genre_donut(
             )
             detail_rows.append(
                 {
+                    "slice_index": len(outer_values) - 1,
                     "primary_genre_plot": primary_label,
                     "genre_plot": subgenre,
                     "docs": int(count),
@@ -668,6 +718,550 @@ def plot_nested_genre_donut(
     fig.savefig(output_path, dpi=300, bbox_inches="tight", facecolor="white")
     plt.close(fig)
     return detail_df
+
+
+def aggregate_top_categories(
+    counts: pd.Series,
+    *,
+    top_n: int,
+    other_label: str = "other",
+) -> pd.DataFrame:
+    work = counts[counts > 0].sort_values(ascending=False).copy()
+    if len(work) > top_n:
+        head = work.iloc[: top_n - 1]
+        tail_sum = float(work.iloc[top_n - 1 :].sum())
+        work = pd.concat([head, pd.Series({other_label: tail_sum})])
+    return (
+        work.rename_axis("label")
+        .reset_index(name="docs")
+        .assign(pct_docs=lambda df: df["docs"] / df["docs"].sum() * 100.0)
+    )
+
+
+def build_nested_genre_plot_data(
+    docs: pd.DataFrame,
+    *,
+    max_primary_genres: int = 5,
+    max_subgenres_per_primary: int = 4,
+) -> tuple[pd.DataFrame, list[float], list[str], list[object], list[float], list[str], list[object]]:
+    work = docs.copy()
+    work["primary_genre"] = work["primary_genre"].fillna("unknown")
+    work["genre"] = work["genre"].fillna("unknown")
+
+    primary_counts = work["primary_genre"].value_counts()
+    if len(primary_counts) > max_primary_genres:
+        keep_primary = primary_counts.head(max_primary_genres - 1).index
+        work["primary_genre_plot"] = work["primary_genre"].where(
+            work["primary_genre"].isin(keep_primary),
+            "other",
+        )
+    else:
+        work["primary_genre_plot"] = work["primary_genre"]
+
+    primary_counts = work["primary_genre_plot"].value_counts().sort_values(ascending=False)
+    inner_values = primary_counts.tolist()
+    inner_labels = primary_counts.index.tolist()
+
+    primary_palette = ["#2B6F77", "#C77B57", "#71935C", "#8C6D97", "#7A8793", "#C2A75B"]
+    inner_colors = [primary_palette[i % len(primary_palette)] for i in range(len(inner_labels))]
+    primary_color_map = dict(zip(inner_labels, inner_colors))
+
+    detail_rows: list[dict[str, object]] = []
+    outer_values: list[float] = []
+    outer_labels: list[str] = []
+    outer_colors: list[object] = []
+    total_docs = max(int(work.shape[0]), 1)
+
+    for primary_label in inner_labels:
+        subset = work[work["primary_genre_plot"] == primary_label].copy()
+        sub_counts = subset["genre"].value_counts().sort_values(ascending=False)
+        if len(sub_counts) > max_subgenres_per_primary:
+            head = sub_counts.iloc[: max_subgenres_per_primary - 1]
+            other_sum = float(sub_counts.iloc[max_subgenres_per_primary - 1 :].sum())
+            sub_counts = pd.concat([head, pd.Series({"other": other_sum})])
+
+        base_color = primary_color_map[primary_label]
+        for idx, (subgenre, count) in enumerate(sub_counts.items()):
+            outer_values.append(float(count))
+            outer_labels.append(str(subgenre))
+            outer_colors.append(
+                lighten_color(
+                    base_color,
+                    0.10 + 0.58 * safe_div(idx, max(len(sub_counts) - 1, 1)),
+                )
+            )
+            detail_rows.append(
+                {
+                    "slice_index": len(outer_values) - 1,
+                    "primary_genre_plot": primary_label,
+                    "genre_plot": subgenre,
+                    "docs": int(count),
+                    "pct_docs": safe_div(count, total_docs) * 100.0,
+                }
+            )
+
+    detail_df = pd.DataFrame(detail_rows).sort_values(["docs", "primary_genre_plot"], ascending=[False, True])
+    return detail_df, inner_values, inner_labels, inner_colors, outer_values, outer_labels, outer_colors
+
+
+def draw_triptych_genre_legend(
+    ax: plt.Axes,
+    genre_df: pd.DataFrame,
+    primary_color_map: dict[str, object],
+    *,
+    total_docs: int,
+    subgenres_per_primary: int = 2,
+) -> None:
+    ax.axis("off")
+    ax.set_xlim(0, 1)
+    ax.set_ylim(0, 1)
+
+    primary_summary = (
+        genre_df.groupby("primary_genre_plot", as_index=False)
+        .agg(primary_docs=("docs", "sum"))
+        .sort_values("primary_docs", ascending=False)
+        .reset_index(drop=True)
+    )
+    if primary_summary.empty:
+        return
+
+    row_count = len(primary_summary)
+    top_margin = 0.08
+    bottom_margin = 0.06
+    row_height = (1.0 - top_margin - bottom_margin) / max(row_count, 1)
+
+    for idx, row in enumerate(primary_summary.itertuples(index=False)):
+        primary_label = str(row.primary_genre_plot)
+        primary_color = primary_color_map[primary_label]
+        y_top = 1.0 - top_margin - idx * row_height
+        y_bottom = y_top - row_height
+        header_y = y_top - 0.19 * row_height
+        pct_y = y_top - 0.42 * row_height
+
+        ax.add_patch(Rectangle((0.02, header_y - 0.022), 0.045, 0.045, facecolor=primary_color, edgecolor="none"))
+        ax.text(
+            0.09,
+            header_y,
+            wrap_label(paper_label(primary_label), width=18, max_lines=2),
+            fontsize=12.2,
+            fontweight="bold",
+            va="center",
+            color="#21303B",
+            linespacing=1.05,
+        )
+        ax.text(
+            0.09,
+            pct_y,
+            f"{safe_div(int(row.primary_docs), total_docs) * 100.0:.1f}% of docs",
+            fontsize=10.1,
+            fontweight="semibold",
+            va="center",
+            color="#6B7B88",
+        )
+
+        subgenres = (
+            genre_df[
+                (genre_df["primary_genre_plot"] == primary_label)
+                & (genre_df["genre_plot"].astype(str) != primary_label)
+            ]
+            .sort_values("docs", ascending=False)
+            .head(subgenres_per_primary)
+        )
+        if subgenres.empty:
+            subgenres = (
+                genre_df[genre_df["primary_genre_plot"] == primary_label]
+                .sort_values("docs", ascending=False)
+                .head(subgenres_per_primary)
+            )
+
+        sub_start_y = y_top - 0.72 * row_height
+        sub_step = row_height * 0.24
+        for sub_idx, sub_row in enumerate(subgenres.itertuples(index=False)):
+            sub_y = sub_start_y - sub_idx * sub_step
+            bullet_color = lighten_color(primary_color, 0.22 + 0.18 * min(sub_idx, 2))
+            ax.text(0.09, sub_y, "•", fontsize=11.5, va="center", color=bullet_color)
+            ax.text(
+                0.12,
+                sub_y,
+                f"{genre_annotation_label(primary_label, str(sub_row.genre_plot))} ({sub_row.pct_docs:.1f}%)",
+                fontsize=9.7,
+                va="center",
+                color="#4C5D69",
+            )
+
+        if idx < row_count - 1:
+            divider_y = max(y_bottom + 0.08 * row_height, 0.0)
+            ax.plot([0.02, 0.98], [divider_y, divider_y], color="#E3E9EE", linewidth=0.9, solid_capstyle="round")
+
+
+def annotate_donut_wedges(
+    ax: plt.Axes,
+    wedges: Sequence[object],
+    *,
+    labels: Sequence[str],
+    values: Sequence[float],
+    colors: Sequence[object],
+    anchor_radius: float,
+    label_radius: float,
+    pct_values: Sequence[float] | None = None,
+    min_pct: float = 0.0,
+    max_labels: int | None = None,
+    fontsize: float = 11.5,
+    fontweight: str = "semibold",
+    wrap_width: int = 16,
+    min_gap: float = 0.18,
+    max_abs_y: float | None = None,
+) -> None:
+    total = float(sum(values)) or 1.0
+    entries: list[dict[str, object]] = []
+    for idx, (wedge, label, value, color) in enumerate(zip(wedges, labels, values, colors)):
+        pct = (
+            float(pct_values[idx])
+            if pct_values is not None
+            else safe_div(float(value), total) * 100.0
+        )
+        if pct < min_pct:
+            continue
+        theta = math.radians((wedge.theta1 + wedge.theta2) / 2.0)
+        entries.append(
+            {
+                "label": label,
+                "pct": pct,
+                "color": color,
+                "x": math.cos(theta),
+                "y": math.sin(theta),
+            }
+        )
+
+    if max_labels is not None and len(entries) > max_labels:
+        entries = sorted(entries, key=lambda item: float(item["pct"]), reverse=True)[:max_labels]
+
+    for side in ("left", "right"):
+        side_entries = [
+            entry for entry in entries
+            if (float(entry["x"]) < 0.0 if side == "left" else float(entry["x"]) >= 0.0)
+        ]
+        if not side_entries:
+            continue
+        side_entries = sorted(side_entries, key=lambda item: float(item["y"]))
+        default_limit = min(label_radius * 0.98, 1.16)
+        y_limit = max_abs_y if max_abs_y is not None else default_limit
+        target_y = np.asarray(
+            [float(np.clip(float(entry["y"]) * label_radius, -y_limit, y_limit)) for entry in side_entries],
+            dtype=float,
+        )
+        for idx in range(1, len(target_y)):
+            target_y[idx] = max(target_y[idx], target_y[idx - 1] + min_gap)
+        overflow = target_y[-1] - y_limit
+        if overflow > 0:
+            target_y -= overflow
+        for idx in range(len(target_y) - 2, -1, -1):
+            target_y[idx] = min(target_y[idx], target_y[idx + 1] - min_gap)
+        underflow = -y_limit - target_y[0]
+        if underflow > 0:
+            target_y += underflow
+        if len(side_entries) == 1:
+            target_y = np.asarray([float(np.clip(float(side_entries[0]["y"]) * label_radius, -y_limit, y_limit))])
+        for entry, y_pos in zip(side_entries, target_y):
+            x = float(entry["x"])
+            y = float(entry["y"])
+            line_color = mcolors.to_rgba(entry["color"], 0.88)
+            text = f"{wrap_label(entry['label'], width=wrap_width, max_lines=2)}\n{float(entry['pct']):.1f}%"
+            x_text = -label_radius if side == "left" else label_radius
+            ha = "right" if side == "left" else "left"
+            ax.annotate(
+                text,
+                xy=(anchor_radius * x, anchor_radius * y),
+                xytext=(x_text, float(y_pos)),
+                ha=ha,
+                va="center",
+                fontsize=fontsize,
+                fontweight=fontweight,
+                color="#142029",
+                linespacing=1.15,
+                arrowprops={
+                    "arrowstyle": "-",
+                    "color": line_color,
+                    "linewidth": 1.0,
+                    "shrinkA": 0,
+                    "shrinkB": 4,
+                    "connectionstyle": "arc3,rad=0.06",
+                },
+                zorder=10,
+            )
+
+
+def annotate_selected_wedge_entries(
+    ax: plt.Axes,
+    entries: Sequence[dict[str, object]],
+    *,
+    label_radius: float,
+    fontsize: float = 13,
+    fontweight: str = "semibold",
+    wrap_width: int = 16,
+    min_gap: float = 0.18,
+    max_abs_y: float | None = None,
+) -> None:
+    if not entries:
+        return
+
+    normalized_entries: list[dict[str, object]] = []
+    for entry in entries:
+        wedge = entry["wedge"]
+        theta = math.radians((wedge.theta1 + wedge.theta2) / 2.0)
+        normalized_entries.append(
+            {
+                "label": entry["label"],
+                "pct": float(entry["pct"]),
+                "color": entry["color"],
+                "anchor_radius": float(entry["anchor_radius"]),
+                "x": math.cos(theta),
+                "y": math.sin(theta),
+            }
+        )
+
+    for side in ("left", "right"):
+        side_entries = [
+            entry for entry in normalized_entries
+            if (float(entry["x"]) < 0.0 if side == "left" else float(entry["x"]) >= 0.0)
+        ]
+        if not side_entries:
+            continue
+        side_entries = sorted(side_entries, key=lambda item: float(item["y"]))
+        default_limit = min(label_radius * 0.95, 1.02)
+        y_limit = max_abs_y if max_abs_y is not None else default_limit
+        target_y = np.asarray(
+            [float(np.clip(float(entry["y"]) * label_radius, -y_limit, y_limit)) for entry in side_entries],
+            dtype=float,
+        )
+        for idx in range(1, len(target_y)):
+            target_y[idx] = max(target_y[idx], target_y[idx - 1] + min_gap)
+        overflow = target_y[-1] - y_limit
+        if overflow > 0:
+            target_y -= overflow
+        for idx in range(len(target_y) - 2, -1, -1):
+            target_y[idx] = min(target_y[idx], target_y[idx + 1] - min_gap)
+        underflow = -y_limit - target_y[0]
+        if underflow > 0:
+            target_y += underflow
+        if len(side_entries) == 1:
+            target_y = np.asarray([float(np.clip(float(side_entries[0]["y"]) * label_radius, -y_limit, y_limit))])
+        for entry, y_pos in zip(side_entries, target_y):
+            x = float(entry["x"])
+            y = float(entry["y"])
+            line_color = mcolors.to_rgba(entry["color"], 0.88)
+            text = f"{wrap_label(entry['label'], width=wrap_width, max_lines=2)}\n{float(entry['pct']):.1f}%"
+            x_text = -label_radius if side == "left" else label_radius
+            ha = "right" if side == "left" else "left"
+            ax.annotate(
+                text,
+                xy=(float(entry["anchor_radius"]) * x, float(entry["anchor_radius"]) * y),
+                xytext=(x_text, float(y_pos)),
+                ha=ha,
+                va="center",
+                fontsize=fontsize,
+                fontweight=fontweight,
+                color="#142029",
+                linespacing=1.12,
+                arrowprops={
+                    "arrowstyle": "-",
+                    "color": line_color,
+                    "linewidth": 1.0,
+                    "shrinkA": 0,
+                    "shrinkB": 4,
+                    "connectionstyle": "arc3,rad=0.05",
+                },
+                zorder=10,
+            )
+
+
+def genre_annotation_label(primary_label: str, genre_label: str) -> str:
+    primary = prettify_label(primary_label)
+    genre = prettify_label(genre_label)
+    if genre == "other":
+        return f"Other {paper_label(primary).lower()}"
+    if genre == primary:
+        return paper_label(primary)
+    if "/" in genre:
+        return paper_label(genre.split("/")[-1])
+    return paper_label(genre)
+
+
+def plot_benchmark_profile_overview(docs: pd.DataFrame, output_path: Path) -> None:
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    language_df = aggregate_top_categories(docs["lang"].value_counts(), top_n=9)
+    length_df = (
+        docs["token_length_bucket"]
+        .fillna("unknown")
+        .value_counts()
+        .rename_axis("label")
+        .reset_index(name="docs")
+        .assign(pct_docs=lambda df: df["docs"] / df["docs"].sum() * 100.0)
+    )
+    genre_df, inner_values, inner_labels, inner_colors, outer_values, outer_labels, outer_colors = (
+        build_nested_genre_plot_data(docs)
+    )
+
+    fig = plt.figure(figsize=(19.4, 7.2), constrained_layout=True, facecolor="white")
+    gs = fig.add_gridspec(1, 3, width_ratios=[0.92, 1.36, 0.92])
+    lang_ax = fig.add_subplot(gs[0, 0])
+    genre_ax = fig.add_subplot(gs[0, 1])
+    length_ax = fig.add_subplot(gs[0, 2])
+
+    for ax in (lang_ax, genre_ax, length_ax):
+        ax.set_aspect("equal")
+        ax.axis("off")
+
+    language_colors = sns.color_palette("colorblind", n_colors=len(language_df))
+    lang_wedges, _ = lang_ax.pie(
+        language_df["docs"],
+        radius=0.90,
+        startangle=92,
+        counterclock=False,
+        colors=language_colors,
+        wedgeprops={"width": 0.44, "edgecolor": "white", "linewidth": 1.8},
+    )
+    lang_ax.text(
+        0,
+        0,
+        f"{int(docs['lang'].nunique())}\nlanguages",
+        ha="center",
+        va="center",
+        fontsize=15,
+        fontweight="bold",
+        color="#24323C",
+    )
+    lang_ax.set_title("Languages", fontsize=17, fontweight="bold", pad=18)
+    annotate_donut_wedges(
+        lang_ax,
+        lang_wedges,
+        labels=[paper_label(label) for label in language_df["label"]],
+        values=language_df["docs"].tolist(),
+        colors=language_colors,
+        anchor_radius=0.90,
+        label_radius=1.50,
+        min_pct=6.5,
+        fontsize=13,
+        wrap_width=15,
+        min_gap=0.22,
+        max_abs_y=1.02,
+    )
+
+    outer_wedges, _ = genre_ax.pie(
+        outer_values,
+        radius=1.08,
+        startangle=90,
+        counterclock=False,
+        colors=outer_colors,
+        wedgeprops={"width": 0.28, "edgecolor": "white", "linewidth": 1.5},
+    )
+    inner_wedges, _ = genre_ax.pie(
+        inner_values,
+        radius=0.78,
+        startangle=90,
+        counterclock=False,
+        colors=inner_colors,
+        wedgeprops={"width": 0.34, "edgecolor": "white", "linewidth": 1.3},
+    )
+    genre_ax.text(
+        0,
+        0,
+        f"{int(docs['primary_genre'].nunique())} primary,\n{int(docs['genre'].nunique())} sub",
+        ha="center",
+        va="center",
+        fontsize=15,
+        fontweight="bold",
+        color="#24323C",
+        linespacing=1.1,
+    )
+    genre_ax.set_title("Genres", fontsize=17, fontweight="bold", pad=18)
+    genre_callout_entries = [
+        {
+            "wedge": wedge,
+            "label": paper_label(label),
+            "pct": safe_div(value, max(sum(inner_values), 1.0)) * 100.0,
+            "color": color,
+            "anchor_radius": 0.78,
+        }
+        for wedge, label, value, color in zip(inner_wedges, inner_labels, inner_values, inner_colors)
+    ]
+    top_subgenre_df = (
+        genre_df.assign(
+            display_label=lambda df: [
+                genre_annotation_label(primary, genre)
+                for primary, genre in zip(df["primary_genre_plot"], df["genre_plot"])
+            ]
+        )
+        .loc[
+            lambda df: (
+                (df["genre_plot"].astype(str) != df["primary_genre_plot"].astype(str))
+                & (df["genre_plot"].astype(str) != "other")
+            )
+        ]
+        .sort_values("docs", ascending=False)
+        .head(2)
+    )
+    genre_callout_entries.extend(
+        {
+            "wedge": outer_wedges[int(row.slice_index)],
+            "label": str(row.display_label),
+            "pct": float(row.pct_docs),
+            "color": outer_colors[int(row.slice_index)],
+            "anchor_radius": 1.08,
+        }
+        for row in top_subgenre_df.itertuples(index=False)
+    )
+    annotate_selected_wedge_entries(
+        genre_ax,
+        genre_callout_entries,
+        label_radius=1.28,
+        fontsize=13,
+        wrap_width=17,
+        min_gap=0.20,
+        max_abs_y=0.96,
+    )
+
+    length_order = ["short", "medium", "long", "extra_long", "unknown"]
+    length_df["label"] = pd.Categorical(length_df["label"], categories=length_order, ordered=True)
+    length_df = length_df.sort_values("label").reset_index(drop=True)
+    length_colors = ["#CADFED", "#7FB3D5", "#2F78B7", "#173F5F", "#8B8F94"][: len(length_df)]
+    length_wedges, _ = length_ax.pie(
+        length_df["docs"],
+        radius=0.90,
+        startangle=112,
+        counterclock=False,
+        colors=length_colors,
+        wedgeprops={"width": 0.44, "edgecolor": "white", "linewidth": 1.8},
+    )
+    length_ax.text(
+        0,
+        0,
+        f"{int(length_df.shape[0])}\nbuckets",
+        ha="center",
+        va="center",
+        fontsize=15,
+        fontweight="bold",
+        color="#24323C",
+    )
+    length_ax.set_title("Document Length", fontsize=17, fontweight="bold", pad=18)
+    annotate_donut_wedges(
+        length_ax,
+        length_wedges,
+        labels=[paper_label(label) for label in length_df["label"].astype(str)],
+        values=length_df["docs"].tolist(),
+        colors=length_colors,
+        anchor_radius=0.90,
+        label_radius=1.22,
+        min_pct=0.0,
+        fontsize=13,
+        wrap_width=14,
+        min_gap=0.20,
+        max_abs_y=0.96,
+    )
+
+    fig.savefig(output_path, dpi=300, bbox_inches="tight", facecolor="white")
+    plt.close(fig)
 
 
 def plot_stage_document_flow(
@@ -1890,9 +2484,9 @@ def build_stage_tables_and_figures(
         phase1_full_counts,
         phase2_full_counts,
         int(merge_summary["stage_counts"]["combined_exported_documents"]),
-        output_figures / "stage_document_sankey.png",
+        output_figures / "stage_document_sankey.pdf",
     )
-    plot_stage_author_counts(author_df, output_figures / "stage_author_counts.png")
+    plot_stage_author_counts(author_df, output_figures / "stage_author_counts.pdf")
 
     quality_examples = pd.concat(
         [
@@ -2114,7 +2708,7 @@ def run(
 
     language_pie = plot_pie_chart(
         docs["lang"].value_counts(),
-        figures_dir / "language_distribution_pie.png",
+        figures_dir / "language_distribution_pie.pdf",
         "Language distribution",
         max_slices=12,
     )
@@ -2122,7 +2716,7 @@ def run(
 
     length_pie = plot_pie_chart(
         docs["token_length_bucket"].fillna("unknown").value_counts(),
-        figures_dir / "document_length_distribution_pie.png",
+        figures_dir / "document_length_distribution_pie.pdf",
         "Document length distribution",
         max_slices=8,
     )
@@ -2130,7 +2724,7 @@ def run(
 
     source_pie = plot_pie_chart(
         docs["source"].value_counts(),
-        figures_dir / "source_distribution_pie.png",
+        figures_dir / "source_distribution_pie.pdf",
         "Source distribution",
         max_slices=12,
     )
@@ -2138,13 +2732,18 @@ def run(
 
     genre_nested = plot_nested_genre_donut(
         docs,
-        figures_dir / "primary_genre_subgenre_nested_donut.png",
+        figures_dir / "primary_genre_subgenre_nested_donut.pdf",
     )
     save_csv(genre_nested, tables_dir / "primary_genre_subgenre_nested_donut_breakdown.csv")
 
+    plot_benchmark_profile_overview(
+        docs,
+        figures_dir / "benchmark_profile_overview_triptych.pdf",
+    )
+
     author_balance_dist = plot_author_balance_histogram(
         docs,
-        figures_dir / "author_balance_histogram.png",
+        figures_dir / "author_balance_histogram.pdf",
     )
     save_csv(author_balance_dist, tables_dir / "author_balance_histogram_breakdown.csv")
 

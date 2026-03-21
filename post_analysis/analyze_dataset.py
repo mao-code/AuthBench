@@ -561,7 +561,7 @@ def plot_language_distribution(docs: pd.DataFrame, output_dir: Path) -> None:
     plt.ylabel("Document count")
     plt.title("Language distribution by document type")
     plt.tight_layout()
-    plt.savefig(output_dir / "language_distribution.png", dpi=300)
+    plt.savefig(output_dir / "language_distribution.pdf", dpi=300)
     plt.close()
 
 
@@ -581,7 +581,7 @@ def plot_primary_genre_heatmap(docs: pd.DataFrame, output_dir: Path) -> None:
     plt.ylabel("Language")
     plt.title("Primary genre mix within each language")
     plt.tight_layout()
-    plt.savefig(output_dir / "primary_genre_heatmap.png", dpi=300)
+    plt.savefig(output_dir / "primary_genre_heatmap.pdf", dpi=300)
     plt.close()
 
 
@@ -601,7 +601,7 @@ def plot_token_length_box(docs: pd.DataFrame, output_dir: Path) -> None:
     plt.ylabel("Token length")
     plt.title("Token length distribution by language")
     plt.tight_layout()
-    plt.savefig(output_dir / "token_length_boxplot.png", dpi=300)
+    plt.savefig(output_dir / "token_length_boxplot.pdf", dpi=300)
     plt.close()
 
 
@@ -617,7 +617,7 @@ def plot_primary_genre_share(docs: pd.DataFrame, output_dir: Path, top_n: int = 
     plt.ylabel("Primary genre")
     plt.title(f"Top {top_n} primary genres")
     plt.tight_layout()
-    plt.savefig(output_dir / "primary_genre_distribution.png", dpi=300)
+    plt.savefig(output_dir / "primary_genre_distribution.pdf", dpi=300)
     plt.close()
 
 
@@ -634,7 +634,7 @@ def plot_phase_distribution(docs: pd.DataFrame, output_dir: Path) -> None:
     plt.ylabel("Document count")
     plt.title("Phase distribution by language")
     plt.tight_layout()
-    plt.savefig(output_dir / "phase_distribution_by_language.png", dpi=300)
+    plt.savefig(output_dir / "phase_distribution_by_language.pdf", dpi=300)
     plt.close()
 
 
