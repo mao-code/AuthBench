@@ -13,7 +13,7 @@ WANDB_ENTITY="${WANDB_ENTITY:-}"
 WANDB_RUN_PREFIX="${WANDB_RUN_PREFIX:-train-all}"
 WANDB_TAGS="${WANDB_TAGS:-AuthBench train-all}"
 
-DATASET_ROOT="${DATASET_ROOT:-processing/outputs/combined_phase1_phase2}"
+DATASET_ROOT="${DATASET_ROOT:-processing/outputs/authbench}"
 OUTPUT_DIR="${OUTPUT_DIR:-eval/results/training_summary}"
 BATCH_SIZE="${BATCH_SIZE:-1}"
 NUM_WORKERS="${NUM_WORKERS:-0}"

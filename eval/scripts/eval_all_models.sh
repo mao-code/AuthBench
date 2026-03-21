@@ -9,7 +9,7 @@ set -euo pipefail
 
 export PYTHONPATH="$(pwd):${PYTHONPATH:-}"
 
-DATASET_ROOT="${DATASET_ROOT:-processing/outputs/combined_phase1_phase2}"
+DATASET_ROOT="${DATASET_ROOT:-processing/outputs/authbench}"
 SPLIT="${SPLIT:-test}"
 TASK="${TASK:-both}"
 OUTPUT_DIR="${OUTPUT_DIR:-eval/results}"
