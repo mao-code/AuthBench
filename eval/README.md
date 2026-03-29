@@ -135,14 +135,95 @@ Useful overrides for the shell wrapper:
 - `BASELINES="tfidf ppm"` to evaluate only a subset.
 - `OUTPUT_DIR=eval/results/baselines_topic CANDIDATE_POOL=topic MAX_TOPIC_CANDIDATES=5000` for topic-matched evaluation.
 
-Export metric tables from JSON results:
+Analyze zero-shot result JSONs, merge in the three baselines from
+`eval/results/baselines`, export organized tables, and generate bar-chart figures:
 
 ```bash
-python -m AuthBench.eval.export_results \
-  --results-dir eval/results \
-  --output-dir eval/results/analysis \
-  --metrics success@10 recall@10 ndcg@10 eer@10
+eval/scripts/analyze_results.sh
 ```
+
+The wrapper defaults to:
+
+- `RESULTS_DIR=eval/results`
+- `BASELINES_DIR=eval/results/baselines`
+- `DATASET_ROOT=processing/outputs/authbench`
+- `SPLIT=test`
+- `CANDIDATE_POOL=all`
+- `OUTPUT_DIR=eval/results/analysis`
+
+Useful overrides:
+
+- `METRICS="success@10 recall@10 ndcg@10 mrr roc_auc eer"` to restrict exported metrics.
+- `CANDIDATE_POOL=topic MAX_TOPIC_CANDIDATES=5000` to analyze topic-controlled runs with the matching random-reference normalization.
+- `MAX_QUERIES=2000 MAX_CANDIDATES=5000 SEED=13` to reproduce analysis for capped evaluation runs.
+- `SKIP_PLOTS=1` to export tables and reports only.
+
+The analysis output is organized as:
+
+- `eval/results/analysis/metadata/`
+  - `analysis_config.json`
+  - `random_reference/*.csv` with random-guess expectations and pool-size stats by split/language/genre/length bucket
+- `eval/results/analysis/tables/summary/`
+  - `leaderboard_overall.csv`
+  - `best_by_metric.csv`
+  - `by_model_type.csv`
+  - `best_model_by_slice.csv`
+  - `slice_difficulty.csv`
+- `eval/results/analysis/tables/long/`
+  - `overall_metrics_long.csv`
+  - `grouped_metrics_long.csv`
+- `eval/results/analysis/tables/wide/`
+  - `language/{raw,normalized}/*.csv`
+  - `primary_genre/{raw,normalized}/*.csv`
+  - `length_bucket/{raw,normalized}/*.csv`
+- `eval/results/analysis/plots/`
+  - horizontal bar charts for overall metrics and macro-by-slice metrics, with dashed reference lines for `tfidf`, `ngram`, and `ppm`
+- `eval/results/analysis/reports/fine_grained_analysis.md`
+
+The exported tables include every metric present in the JSON results, including:
+
+- Retrieval: `success@K`, `recall@K`, `ndcg@K`, `mrr`
+- Attribution: `roc_auc`, `eer`
+
+They also include candidate-pool statistics:
+
+- `num_candidates` when the pool size is fixed
+- `min_num_candidates` / `max_num_candidates` when the pool varies per query
+- random-reference files with `avg_num_candidates`, `min_num_candidates`, `max_num_candidates`, and `avg_num_positives`
+
+## Metric normalization used in analysis
+
+For one query `q`, let:
+
+- `N_q` = candidate-pool size
+- `R_q` = number of relevant candidates
+- `K` = cutoff
+
+The analyzer reconstructs `N_q` and `R_q` from the benchmark split plus the same
+pooling settings used during evaluation, then averages the random-guess expectation over
+the evaluated queries in the relevant slice.
+
+Random-guess expectations:
+
+- `E[Recall@K | q] = min(K, N_q) / N_q`
+- `E[Success@K | q] = 1 - prod_{i=0}^{K-1} (N_q - R_q - i) / (N_q - i)`
+- `IDCG(R_q, K) = sum_{i=1}^{min(R_q, K)} 1 / log2(i + 1)`
+- `E[nDCG@K | q] = ((R_q / N_q) * sum_{i=1}^{min(K, N_q)} 1 / log2(i + 1)) / IDCG(R_q, K)`
+- `E[MRR | q] = sum_{j=1}^{N_q - R_q + 1} (1 / j) * C(N_q - j, R_q - 1) / C(N_q, R_q)`
+- `E[ROC-AUC] = 0.5`
+- `E[EER] = 0.5`
+
+Chance-adjusted normalized metrics:
+
+- For higher-is-better metrics (`success`, `recall`, `ndcg`, `mrr`, `roc_auc`):
+  - `normalized = (score - random) / (1 - random)`
+- For `eer`:
+  - `normalized_eer = (0.5 - eer) / 0.5 = 1 - 2 * eer`
+
+This normalization maps random guessing to `0`, perfect performance to `1`, and
+worse-than-random performance to negative values. It is the quantity exported as
+`normalized_<metric>` in the summary tables and under the `normalized/` wide-table
+directories.
 
 For a full topic-leakage sweep (topic-matched pools + TF-IDF baseline + CSV exports),
 see `eval/scripts/run_topic_leakage.sh`.
@@ -157,6 +238,12 @@ JSONL logs, and W&B (if enabled) for downstream analysis.
 `train.py` fine-tunes an embedding model with an in-batch InfoNCE-style loss over
 (query, positive-candidate) pairs derived from `ground_truth.jsonl`. Evaluation runs at
 step 0, every `--eval-every` steps, and at the end on both dev and test.
+
+The trainer also supports three authorship-specific recipes via `--authorship-method`:
+- `part` – PART-style same-author contrastive training with a BiLSTM head over token states.
+- `luar` – LUAR-style multi-document author episodes with self-attention + max-pooling over document windows.
+- `stel` – STEL-style contrastive authorship verification with content-controlled triplets.
+- `standard` – the existing query/candidate InfoNCE baseline (default).
 
 Example: fine-tune and evaluate `bge-base-en-v1.5` with periodic metrics:
 
@@ -175,6 +262,9 @@ Useful flags:
 - `--query-prefix/--doc-prefix` to add model-specific prompts (e.g., E5's `query:` /
   `passage:`).
 - `--max-eval-queries/--max-eval-candidates` to cap evaluation size.
+- `--authorship-method part|luar|stel` to switch from the default query/candidate loss to
+  one of the authorship-specific training recipes.
+- `--max-train-authors` to cap author-centric training for PART/LUAR/STEL.
 - `--negatives-per-query` and `--negative-strategy` to balance attribution EER runtime.
 - `--trust-remote-code` to pre-approve HF repos that ship custom modeling code
   (scripts will also auto-retry with `trust_remote_code=True` when transformers
@@ -196,6 +286,7 @@ Useful flags:
 Scripts:
 - `eval/scripts/train_model.sh <model-name>` – run one model for 1 epoch with mid-epoch eval and LoRA (rank 16 by default; override with `LORA_RANK`). Results are written under `eval/results/training_summary/<model>/`.
 - `eval/scripts/train_all_models.sh` – train the default top-2 models per group (LLM-base, LLM-instruct, Embedding, Embedding-instruct) with LoRA rank 16. Override the list with `MODELS="m1 m2 ..."`.
+- `eval/scripts/train_eval_authorship_methods.sh` – train and evaluate `part`, `luar`, and `stel` on a single base model (defaults to `qwen3-emb-4b`) with LoRA rank 16.
 - `eval/scripts/eval_all_models.sh` – evaluate a broad set of embedding models (or override via `MODELS="m1 m2"`) and store per-model JSON outputs with fine-grained breakdowns for leaderboard building.
 Checkpoints are saved under `--output-dir/<model>` with a `training_summary.json` that
 captures the final dev/test metrics for quick comparison to pre-trained baselines.

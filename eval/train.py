@@ -23,6 +23,15 @@ REPO_PARENT = REPO_ROOT.parent
 if str(REPO_PARENT) not in sys.path:
     sys.path.insert(0, str(REPO_PARENT))
 
+from AuthBench.eval.authorship_methods import (
+    AUTHORSHIP_METHODS,
+    AuthorshipTrainingModel,
+    build_authorship_eval_embedder,
+    build_authorship_training_components,
+    build_method_artifacts,
+    compute_authorship_method_loss,
+    save_authorship_artifacts,
+)
 from AuthBench.eval.data import PairDataset, build_positive_pairs, load_split
 from AuthBench.eval.embedder import HuggingFaceEmbedder
 from AuthBench.eval.evaluators import (
@@ -92,6 +101,12 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Contrastive training on AuthBench.")
     parser.add_argument("--dataset-root", type=Path, default=DEFAULT_DATASET_ROOT)
     parser.add_argument("--model", default="e5-large-v2", help="Model key from model_registry or HF repo id.")
+    parser.add_argument(
+        "--authorship-method",
+        choices=AUTHORSHIP_METHODS,
+        default="standard",
+        help="Training recipe: standard query-candidate InfoNCE, PART, LUAR, or STEL.",
+    )
     parser.add_argument("--output-dir", type=Path, default=Path("checkpoints"))
     parser.add_argument(
         "--skip-checkpoint",
@@ -102,6 +117,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--epochs", type=int, default=1)
     parser.add_argument("--max-steps", type=int, help="Optional max training steps (overrides epochs).")
     parser.add_argument("--max-train-pairs", type=int, help="Cap number of training pairs.")
+    parser.add_argument(
+        "--max-train-authors",
+        type=int,
+        help="Optional cap on the number of training authors for PART/LUAR/STEL.",
+    )
     parser.add_argument("--max-eval-queries", type=int, help="Cap queries during evaluation.")
     parser.add_argument("--max-eval-candidates", type=int, help="Cap candidates during evaluation.")
     parser.add_argument("--eval-every", type=int, default=500, help="Evaluate every N steps.")
@@ -168,6 +188,54 @@ def parse_args() -> argparse.Namespace:
         default=[1, 3, 5, 10],
         help="Ranking metric cutoffs (e.g., --eval-ks 5 or --eval-ks 1 3 5).",
     )
+    parser.add_argument(
+        "--part-hidden-size",
+        type=int,
+        default=512,
+        help="Hidden size per LSTM direction for the PART BiLSTM head.",
+    )
+    parser.add_argument(
+        "--luar-window-size",
+        type=int,
+        default=32,
+        help="Token window size for each LUAR excerpt.",
+    )
+    parser.add_argument(
+        "--luar-max-episode-docs",
+        type=int,
+        default=4,
+        help="Maximum number of documents/windows in one LUAR training episode.",
+    )
+    parser.add_argument(
+        "--luar-eval-episode-docs",
+        type=int,
+        default=4,
+        help="Number of windows used to encode one document at LUAR evaluation time.",
+    )
+    parser.add_argument(
+        "--luar-embedding-size",
+        type=int,
+        default=512,
+        help="Output dimensionality of the LUAR episode projection layer.",
+    )
+    parser.add_argument(
+        "--luar-temperature",
+        type=float,
+        default=0.01,
+        help="Temperature used by LUAR's contrastive loss.",
+    )
+    parser.add_argument(
+        "--stel-margin",
+        type=float,
+        default=0.5,
+        help="Triplet margin for STEL's CAV objective.",
+    )
+    parser.add_argument(
+        "--stel-control-keys",
+        nargs="+",
+        default=["genre", "source"],
+        help="Metadata keys used to content-control STEL negatives, in fallback order.",
+    )
     parser.add_argument("--log-file", type=Path, help="Optional JSONL log of evaluation metrics.")
     parser.add_argument("--wandb-project", help="If set, log metrics to this Weights & Biases project.")
     parser.add_argument("--wandb-run-name", help="Optional W&B run name.")
@@ -226,6 +294,7 @@ def _init_wandb(args: argparse.Namespace):
         tags=args.wandb_tags,
         config={
             "model": args.model,
+            "authorship_method": args.authorship_method,
             "batch_size": args.batch_size,
             "epochs": args.epochs,
             "learning_rate": args.learning_rate,
@@ -235,12 +304,21 @@ def _init_wandb(args: argparse.Namespace):
             "max_length": args.max_length,
             "grad_accum": args.grad_accum,
             "max_train_pairs": args.max_train_pairs,
+            "max_train_authors": args.max_train_authors,
             "max_eval_queries": args.max_eval_queries,
             "max_eval_candidates": args.max_eval_candidates,
             "negatives_per_query": args.negatives_per_query,
             "negative_strategy": args.negative_strategy,
             "late_interaction": args.late_interaction,
             "eval_ks": args.eval_ks,
+            "part_hidden_size": args.part_hidden_size,
+            "luar_window_size": args.luar_window_size,
+            "luar_max_episode_docs": args.luar_max_episode_docs,
+            "luar_eval_episode_docs": args.luar_eval_episode_docs,
+            "luar_embedding_size": args.luar_embedding_size,
+            "luar_temperature": args.luar_temperature,
+            "stel_margin": args.stel_margin,
+            "stel_control_keys": args.stel_control_keys,
             "lora_rank": args.lora_rank,
             "lora_alpha": args.lora_alpha,
             "lora_dropout": args.lora_dropout,
@@ -390,6 +468,10 @@ def train() -> int:
     args = parse_args()
     if args.lora_rank < 0:
         raise ValueError("--lora-rank must be >= 0.")
+    if args.authorship_method != "standard" and args.late_interaction:
+        raise ValueError("--late-interaction is only supported for authorship_method=standard.")
+    if args.authorship_method == "standard" and args.max_train_authors is not None:
+        print("[WARN] --max-train-authors is ignored for authorship_method=standard.")
     eval_ks = sorted({k for k in args.eval_ks if k > 0})
     if not eval_ks:
         raise ValueError("eval_ks must contain at least one positive integer.")
@@ -415,31 +497,53 @@ def train() -> int:
     dev_split = load_split(args.dataset_root, "dev")
     test_split = load_split(args.dataset_root, "test")
 
-    train_pairs = build_positive_pairs(train_split, max_pairs=args.max_train_pairs, seed=args.seed)
-    if not train_pairs:
-        raise RuntimeError("No training pairs found. Check dataset paths or processing output.")
+    train_pairs = None
+    if args.authorship_method == "standard":
+        train_pairs = build_positive_pairs(train_split, max_pairs=args.max_train_pairs, seed=args.seed)
+        if not train_pairs:
+            raise RuntimeError("No training pairs found. Check dataset paths or processing output.")
 
     allow_remote_code_fallback = not args.no_auto_trust_remote_code
     tokenizer = load_tokenizer(
         model_name, trust_remote_code=args.trust_remote_code, allow_remote_code_fallback=allow_remote_code_fallback
     )
-    model = load_model(
+    base_model = load_model(
         model_name, trust_remote_code=args.trust_remote_code, allow_remote_code_fallback=allow_remote_code_fallback
     )
-    _enable_padding(tokenizer, model)
-    model, lora_details = _apply_lora_if_enabled(model, args)
-    model.to(device)
-    trainable_params, total_params = _count_parameters(model)
+    _enable_padding(tokenizer, base_model)
+    base_model, lora_details = _apply_lora_if_enabled(base_model, args)
+
+    if args.authorship_method == "standard":
+        train_model = base_model
+    else:
+        train_model = AuthorshipTrainingModel(
+            base_model,
+            method=args.authorship_method,
+            pooling=args.pooling,
+            part_hidden_size=args.part_hidden_size,
+            luar_embedding_size=args.luar_embedding_size,
+        )
+
+    train_model.to(device)
+    trainable_params, total_params = _count_parameters(train_model)
     print(f"Trainable parameters: {trainable_params:,} / {total_params:,}")
 
-    train_dataset = PairDataset(train_pairs)
-    collate = partial(
-        collate_pairs,
-        tokenizer=tokenizer,
-        max_length=args.max_length,
-        query_prefix=args.query_prefix,
-        doc_prefix=args.doc_prefix,
-    )
+    if args.authorship_method == "standard":
+        train_dataset = PairDataset(train_pairs)
+        collate = partial(
+            collate_pairs,
+            tokenizer=tokenizer,
+            max_length=args.max_length,
+            query_prefix=args.query_prefix,
+            doc_prefix=args.doc_prefix,
+        )
+    else:
+        train_dataset, collate = build_authorship_training_components(train_split, tokenizer, args)
+        if len(train_dataset) == 0:
+            raise RuntimeError(
+                f"No eligible training examples found for authorship method '{args.authorship_method}'."
+            )
+
     train_loader = DataLoader(
         train_dataset,
         batch_size=args.batch_size,
@@ -456,7 +560,7 @@ def train() -> int:
         eval_every_steps = 1
 
     total_steps = args.max_steps or math.ceil(len(train_loader) * args.epochs)
-    trainable_parameters = [param for param in model.parameters() if param.requires_grad]
+    trainable_parameters = [param for param in train_model.parameters() if param.requires_grad]
     if not trainable_parameters:
         raise RuntimeError("No trainable parameters found; check LoRA config and model setup.")
     optimizer = torch.optim.AdamW(trainable_parameters, lr=args.learning_rate, weight_decay=args.weight_decay)
@@ -467,16 +571,19 @@ def train() -> int:
     optimizer.zero_grad(set_to_none=True)
 
     # Step-0 eval
-    eval_embedder = HuggingFaceEmbedder(
-        model_name_or_path=model_name,
-        model=model,
-        tokenizer=tokenizer,
-        device=device,
-        max_length=args.max_length,
-        pooling=args.pooling,
-        trust_remote_code=args.trust_remote_code,
-        allow_remote_code_fallback=allow_remote_code_fallback,
-    )
+    if args.authorship_method == "standard":
+        eval_embedder = HuggingFaceEmbedder(
+            model_name_or_path=model_name,
+            model=train_model,
+            tokenizer=tokenizer,
+            device=device,
+            max_length=args.max_length,
+            pooling=args.pooling,
+            trust_remote_code=args.trust_remote_code,
+            allow_remote_code_fallback=allow_remote_code_fallback,
+        )
+    else:
+        eval_embedder = build_authorship_eval_embedder(train_model, tokenizer, args, device)
     initial_eval = run_evaluations(eval_embedder, "dev", dev_split, args, step=0)
     print("Step 0 evaluation:", json.dumps(initial_eval, indent=2))
     record_eval("eval/step0", initial_eval, wandb_prefix="eval")
@@ -484,17 +591,21 @@ def train() -> int:
     step = 0
     for epoch in range(args.epochs):
         for batch in train_loader:
-            model.train()
+            train_model.train()
             with autocast(enabled=args.fp16):
-                query_inputs, cand_inputs = batch
-                # Move tensors to device in the main process to avoid CUDA init inside DataLoader workers.
-                query_inputs = {k: v.to(device) for k, v in query_inputs.items()}
-                cand_inputs = {k: v.to(device) for k, v in cand_inputs.items()}
-                query_emb = encode(model, query_inputs, args.pooling)
-                cand_emb = encode(model, cand_inputs, args.pooling)
-                logits = torch.matmul(query_emb, cand_emb.T) / args.temperature
-                labels = torch.arange(logits.size(0), device=device)
-                loss = F.cross_entropy(logits, labels) / args.grad_accum
+                if args.authorship_method == "standard":
+                    query_inputs, cand_inputs = batch
+                    # Move tensors to device in the main process to avoid CUDA init inside DataLoader workers.
+                    query_inputs = {k: v.to(device) for k, v in query_inputs.items()}
+                    cand_inputs = {k: v.to(device) for k, v in cand_inputs.items()}
+                    query_emb = encode(train_model, query_inputs, args.pooling)
+                    cand_emb = encode(train_model, cand_inputs, args.pooling)
+                    logits = torch.matmul(query_emb, cand_emb.T) / args.temperature
+                    labels = torch.arange(logits.size(0), device=device)
+                    method_loss = F.cross_entropy(logits, labels)
+                else:
+                    method_loss = compute_authorship_method_loss(train_model, batch, args, device)
+                loss = method_loss / args.grad_accum
                 loss_value = float(loss.item())
 
             scaler.scale(loss).backward()
@@ -536,12 +647,18 @@ def train() -> int:
 
     save_path = args.output_dir / args.model
     save_path.mkdir(parents=True, exist_ok=True)
+    if args.authorship_method != "standard":
+        save_authorship_artifacts(save_path, train_model, args)
     summary_path = save_path / "training_summary.json"
     summary_path.write_text(
         json.dumps(
             {
                 "model": args.model,
                 "hf_repo": model_name,
+                "authorship_method": args.authorship_method,
+                "authorship_method_config": (
+                    build_method_artifacts(args).__dict__ if args.authorship_method != "standard" else None
+                ),
                 "steps": step,
                 "batch_size": args.batch_size,
                 "epochs": args.epochs,
@@ -563,7 +680,7 @@ def train() -> int:
     )
     print(f"Saved training summary to {summary_path}")
     if not args.skip_checkpoint:
-        model.save_pretrained(save_path)
+        base_model.save_pretrained(save_path)
         tokenizer.save_pretrained(save_path)
         print(f"Saved checkpoint to {save_path}")
     else:

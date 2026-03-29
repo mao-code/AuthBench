@@ -38,6 +38,7 @@ MODEL_HF_PATHS: Dict[str, str] = {
     "qwen3-embedding-0.6b": "Qwen/Qwen3-Embedding-0.6B",
     "qwen3-embedding-4b": "Qwen/Qwen3-Embedding-4B",
     "qwen3-embedding-8b": "Qwen/Qwen3-Embedding-8B",
+    "qwen3-emb-4b": "Qwen/Qwen3-Embedding-4B",
     "qwen3-4b": "Qwen/Qwen3-4B",
     "qwen3-4b-instruct": "Qwen/Qwen3-4B-Instruct-2507",
     "qwen2.5-3b": "Qwen/Qwen2.5-3B",

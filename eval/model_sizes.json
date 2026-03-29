@@ -1,0 +1,352 @@
+{
+  "all-minilm-l12-v2": {
+    "hf_repo": "sentence-transformers/all-MiniLM-L12-v2",
+    "model": "all-minilm-l12-v2",
+    "param_count": 33360512,
+    "size_label": "33.4M",
+    "source": "hf_api_safetensors"
+  },
+  "all-minilm-l6-v2": {
+    "hf_repo": "sentence-transformers/all-MiniLM-L6-v2",
+    "model": "all-minilm-l6-v2",
+    "param_count": 22713728,
+    "size_label": "22.7M",
+    "source": "hf_api_safetensors"
+  },
+  "all-mpnet-base-v2": {
+    "hf_repo": "sentence-transformers/all-mpnet-base-v2",
+    "model": "all-mpnet-base-v2",
+    "param_count": 109486978,
+    "size_label": "109.5M",
+    "source": "hf_api_safetensors"
+  },
+  "all-roberta-large-v1": {
+    "hf_repo": "sentence-transformers/all-roberta-large-v1",
+    "model": "all-roberta-large-v1",
+    "param_count": 355360258,
+    "size_label": "355.4M",
+    "source": "hf_api_safetensors"
+  },
+  "allenai-specter": {
+    "hf_repo": "allenai/specter",
+    "model": "allenai-specter",
+    "param_count": 110000000,
+    "size_label": "110M",
+    "source": "curated_fallback"
+  },
+  "bert-base-uncased": {
+    "hf_repo": "bert-base-uncased",
+    "model": "bert-base-uncased",
+    "param_count": 110106428,
+    "size_label": "110.1M",
+    "source": "hf_api_safetensors"
+  },
+  "bge-base-en-v1.5": {
+    "hf_repo": "BAAI/bge-base-en-v1.5",
+    "model": "bge-base-en-v1.5",
+    "param_count": 109482752,
+    "size_label": "109.5M",
+    "source": "hf_api_safetensors"
+  },
+  "bge-base-zh-v1.5": {
+    "hf_repo": "BAAI/bge-base-zh-v1.5",
+    "model": "bge-base-zh-v1.5",
+    "param_count": 102000000,
+    "size_label": "102M",
+    "source": "curated_fallback"
+  },
+  "bge-large-en-v1.5": {
+    "hf_repo": "BAAI/bge-large-en-v1.5",
+    "model": "bge-large-en-v1.5",
+    "param_count": 335000000,
+    "size_label": "335M",
+    "source": "curated_fallback"
+  },
+  "bge-large-zh-v1.5": {
+    "hf_repo": "BAAI/bge-large-zh-v1.5",
+    "model": "bge-large-zh-v1.5",
+    "param_count": 326000000,
+    "size_label": "326M",
+    "source": "curated_fallback"
+  },
+  "bge-m3": {
+    "hf_repo": "BAAI/bge-m3",
+    "model": "bge-m3",
+    "param_count": 567000000,
+    "size_label": "567M",
+    "source": "curated_fallback"
+  },
+  "bge-small-en-v1.5": {
+    "hf_repo": "BAAI/bge-small-en-v1.5",
+    "model": "bge-small-en-v1.5",
+    "param_count": 33360512,
+    "size_label": "33.4M",
+    "source": "hf_api_safetensors"
+  },
+  "deepseek-llm-7b-base": {
+    "hf_repo": "deepseek-ai/deepseek-llm-7b-base",
+    "model": "deepseek-llm-7b-base",
+    "param_count": 7000000000,
+    "size_label": "7B",
+    "source": "curated_fallback"
+  },
+  "deepseek-llm-7b-chat": {
+    "hf_repo": "deepseek-ai/deepseek-llm-7b-chat",
+    "model": "deepseek-llm-7b-chat",
+    "param_count": 7000000000,
+    "size_label": "7B",
+    "source": "curated_fallback"
+  },
+  "distiluse-base-multilingual-cased-v2": {
+    "hf_repo": "sentence-transformers/distiluse-base-multilingual-cased-v2",
+    "model": "distiluse-base-multilingual-cased-v2",
+    "param_count": 134734080,
+    "size_label": "134.7M",
+    "source": "hf_api_safetensors"
+  },
+  "e5-base-v2": {
+    "hf_repo": "intfloat/e5-base-v2",
+    "model": "e5-base-v2",
+    "param_count": 109000000,
+    "size_label": "109M",
+    "source": "curated_fallback"
+  },
+  "e5-large-v2": {
+    "hf_repo": "intfloat/e5-large-v2",
+    "model": "e5-large-v2",
+    "param_count": 335142400,
+    "size_label": "335.1M",
+    "source": "hf_api_safetensors"
+  },
+  "e5-mistral-7b-instruct": {
+    "hf_repo": "intfloat/e5-mistral-7b-instruct",
+    "model": "e5-mistral-7b-instruct",
+    "param_count": 7110660096,
+    "size_label": "7.1B",
+    "source": "hf_api_safetensors"
+  },
+  "e5-small-v2": {
+    "hf_repo": "intfloat/e5-small-v2",
+    "model": "e5-small-v2",
+    "param_count": 33000000,
+    "size_label": "33M",
+    "source": "curated_fallback"
+  },
+  "facebook-contriever": {
+    "hf_repo": "facebook/contriever",
+    "model": "facebook-contriever",
+    "param_count": 110000000,
+    "size_label": "110M",
+    "source": "curated_fallback"
+  },
+  "facebook-contriever-msmarco": {
+    "hf_repo": "facebook/contriever-msmarco",
+    "model": "facebook-contriever-msmarco",
+    "param_count": 110000000,
+    "size_label": "110M",
+    "source": "curated_fallback"
+  },
+  "gte-base": {
+    "hf_repo": "thenlper/gte-base",
+    "model": "gte-base",
+    "param_count": 109482752,
+    "size_label": "109.5M",
+    "source": "hf_api_safetensors"
+  },
+  "gte-large": {
+    "hf_repo": "thenlper/gte-large",
+    "model": "gte-large",
+    "param_count": 335142400,
+    "size_label": "335.1M",
+    "source": "hf_api_safetensors"
+  },
+  "gte-large-en-v1.5": {
+    "hf_repo": "Alibaba-NLP/gte-large-en-v1.5",
+    "model": "gte-large-en-v1.5",
+    "param_count": 409000000,
+    "size_label": "409M",
+    "source": "curated_fallback"
+  },
+  "gte-qwen2-7b-instruct": {
+    "hf_repo": "Alibaba-NLP/gte-Qwen2-7B-instruct",
+    "model": "gte-qwen2-7b-instruct",
+    "param_count": 7612620288,
+    "size_label": "7.6B",
+    "source": "hf_api_safetensors"
+  },
+  "jina-embeddings-v2-base-en": {
+    "hf_repo": "jinaai/jina-embeddings-v2-base-en",
+    "model": "jina-embeddings-v2-base-en",
+    "param_count": 137368320,
+    "size_label": "137.4M",
+    "source": "hf_api_safetensors"
+  },
+  "jina-embeddings-v2-small-en": {
+    "hf_repo": "jinaai/jina-embeddings-v2-small-en",
+    "model": "jina-embeddings-v2-small-en",
+    "param_count": 33000000,
+    "size_label": "33M",
+    "source": "curated_fallback"
+  },
+  "llama3-8b": {
+    "hf_repo": "meta-llama/Meta-Llama-3-8B",
+    "model": "llama3-8b",
+    "param_count": 8030261248,
+    "size_label": "8B",
+    "source": "hf_api_safetensors"
+  },
+  "llama3-8b-instruct": {
+    "hf_repo": "meta-llama/Meta-Llama-3-8B-Instruct",
+    "model": "llama3-8b-instruct",
+    "param_count": 8030261248,
+    "size_label": "8B",
+    "source": "hf_api_safetensors"
+  },
+  "llama3.1-8b": {
+    "hf_repo": "meta-llama/Llama-3.1-8B",
+    "model": "llama3.1-8b",
+    "param_count": 8030261248,
+    "size_label": "8B",
+    "source": "hf_api_safetensors"
+  },
+  "llama3.1-8b-instruct": {
+    "hf_repo": "meta-llama/Llama-3.1-8B-Instruct",
+    "model": "llama3.1-8b-instruct",
+    "param_count": 8030261248,
+    "size_label": "8B",
+    "source": "hf_api_safetensors"
+  },
+  "msmarco-distilbert-base-v4": {
+    "hf_repo": "sentence-transformers/msmarco-distilbert-base-v4",
+    "model": "msmarco-distilbert-base-v4",
+    "param_count": 66362880,
+    "size_label": "66.4M",
+    "source": "hf_api_safetensors"
+  },
+  "multilingual-e5-base": {
+    "hf_repo": "intfloat/multilingual-e5-base",
+    "model": "multilingual-e5-base",
+    "param_count": 278044162,
+    "size_label": "278M",
+    "source": "hf_api_safetensors"
+  },
+  "multilingual-e5-large": {
+    "hf_repo": "intfloat/multilingual-e5-large",
+    "model": "multilingual-e5-large",
+    "param_count": 559890946,
+    "size_label": "559.9M",
+    "source": "hf_api_safetensors"
+  },
+  "mxbai-embed-large-v1": {
+    "hf_repo": "mixedbread-ai/mxbai-embed-large-v1",
+    "model": "mxbai-embed-large-v1",
+    "param_count": 335141888,
+    "size_label": "335.1M",
+    "source": "hf_api_safetensors"
+  },
+  "ngram": {
+    "hf_repo": "",
+    "model": "ngram",
+    "param_count": null,
+    "size_label": "--",
+    "source": "baseline"
+  },
+  "paraphrase-mpnet-base-v2": {
+    "hf_repo": "sentence-transformers/paraphrase-mpnet-base-v2",
+    "model": "paraphrase-mpnet-base-v2",
+    "param_count": 109486978,
+    "size_label": "109.5M",
+    "source": "hf_api_safetensors"
+  },
+  "paraphrase-multilingual-mpnet-base-v2": {
+    "hf_repo": "sentence-transformers/paraphrase-multilingual-mpnet-base-v2",
+    "model": "paraphrase-multilingual-mpnet-base-v2",
+    "param_count": 278044162,
+    "size_label": "278M",
+    "source": "hf_api_safetensors"
+  },
+  "ppm": {
+    "hf_repo": "",
+    "model": "ppm",
+    "param_count": null,
+    "size_label": "--",
+    "source": "baseline"
+  },
+  "qwen2.5-3b": {
+    "hf_repo": "Qwen/Qwen2.5-3B",
+    "model": "qwen2.5-3b",
+    "param_count": 3085938688,
+    "size_label": "3.1B",
+    "source": "hf_api_safetensors"
+  },
+  "qwen2.5-3b-instruct": {
+    "hf_repo": "Qwen/Qwen2.5-3B-Instruct",
+    "model": "qwen2.5-3b-instruct",
+    "param_count": 3085938688,
+    "size_label": "3.1B",
+    "source": "hf_api_safetensors"
+  },
+  "qwen2.5-7b-instruct": {
+    "hf_repo": "Qwen/Qwen2.5-7B-Instruct",
+    "model": "qwen2.5-7b-instruct",
+    "param_count": 7615616512,
+    "size_label": "7.6B",
+    "source": "hf_api_safetensors"
+  },
+  "qwen3-4b": {
+    "hf_repo": "Qwen/Qwen3-4B",
+    "model": "qwen3-4b",
+    "param_count": 4000000000,
+    "size_label": "4B",
+    "source": "curated_fallback"
+  },
+  "qwen3-4b-instruct": {
+    "hf_repo": "Qwen/Qwen3-4B-Instruct-2507",
+    "model": "qwen3-4b-instruct",
+    "param_count": 4022468096,
+    "size_label": "4B",
+    "source": "hf_api_safetensors"
+  },
+  "qwen3-embedding-0.6b": {
+    "hf_repo": "Qwen/Qwen3-Embedding-0.6B",
+    "model": "qwen3-embedding-0.6b",
+    "param_count": 595776512,
+    "size_label": "595.8M",
+    "source": "hf_api_safetensors"
+  },
+  "qwen3-embedding-4b": {
+    "hf_repo": "Qwen/Qwen3-Embedding-4B",
+    "model": "qwen3-embedding-4b",
+    "param_count": 4000000000,
+    "size_label": "4B",
+    "source": "curated_fallback"
+  },
+  "qwen3-embedding-8b": {
+    "hf_repo": "Qwen/Qwen3-Embedding-8B",
+    "model": "qwen3-embedding-8b",
+    "param_count": 7567295488,
+    "size_label": "7.6B",
+    "source": "hf_api_safetensors"
+  },
+  "sfr-embedding-mistral": {
+    "hf_repo": "Salesforce/SFR-Embedding-Mistral",
+    "model": "sfr-embedding-mistral",
+    "param_count": 7110660096,
+    "size_label": "7.1B",
+    "source": "hf_api_safetensors"
+  },
+  "snowflake-arctic-embed-l-v2": {
+    "hf_repo": "Snowflake/snowflake-arctic-embed-l-v2.0",
+    "model": "snowflake-arctic-embed-l-v2",
+    "param_count": 567754752,
+    "size_label": "567.8M",
+    "source": "hf_api_safetensors"
+  },
+  "tfidf": {
+    "hf_repo": "",
+    "model": "tfidf",
+    "param_count": null,
+    "size_label": "--",
+    "source": "baseline"
+  }
+}
