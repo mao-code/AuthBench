@@ -1,137 +1,85 @@
-# Multilingual Datasets
+# AuthBench Source Datasets
 
-## Exorde
-- **Languages**: 122+ (global)
-- **Genres**: Social media, comments, news, forums
-- **Scale**: 65M+ items per week
-- **Length**: Short-long
-- **Author Labels**: Yes (explicit author hash)
-- **Link**: https://huggingface.co/datasets/Exorde/exorde-social-media-december-2024-week1
-- **Notes**: Multi-genre; ideal for multilingual authorship benchmarking
+This document summarizes the raw input sources used to build the current AuthBench release described in [`paper/colm_latex.tex`](/Users/maoxunhuang/Desktop/AuthBench/paper/colm_latex.tex). AuthBench is constructed from 17 public sources across two phases:
 
-## Babel Briefings
-- **Languages**: 30+
-- **Genres**: News headlines, social media
-- **Scale**: 4.7M
-- **Length**: Short
-- **Author Labels**: Partial (source/org-level grouping only)
-- **Link**: https://huggingface.co/datasets/felixludos/babel-briefings
-- **Notes**: No per-post user ID
+- Phase 1 curated datasets listed in [`processing/datasets_manifest.json`](/Users/maoxunhuang/Desktop/AuthBench/processing/datasets_manifest.json)
+- Phase 2 public-web crawls listed in [`processing/second_phase_web_crawling/datasets_manifest.json`](/Users/maoxunhuang/Desktop/AuthBench/processing/second_phase_web_crawling/datasets_manifest.json)
 
-## Amazon Reviews Multi
-- **Languages**: 6 (English, Spanish, French, German, Japanese, Chinese)
-- **Genres**: Product reviews (e-commerce)
-- **Scale**: ~200k reviews (≈33k per language)
-- **Length**: Short-medium (1-5 sentences per review)
-- **Author Labels**: Yes (reviewer IDs provided)
-- **Link**: https://www.kaggle.com/datasets/mexwell/amazon-reviews-multi
-- **Notes**: Balanced multilingual dataset with consistent structure across languages; suitable for cross-lingual authorship benchmarking
+Each source is standardized into a shared schema with `source`, `author_id`, `lang`, `genre`, `content`, and `token_length`, then passed through the five-stage pipeline documented in [`processing/README.md`](/Users/maoxunhuang/Desktop/AuthBench/processing/README.md).
 
----
+## Current benchmark summary
 
-# Monolingual Datasets
+- Documents: 428,150
+- Authors: 153,825
+- Languages: 10 (`en`, `zh`, `hi`, `es`, `fr`, `ar`, `ru`, `de`, `ja`, `ko`)
+- Primary genres: 9
+- Fine-grained genres: 66
+- Length buckets:
+  - short: 1-10 tokens
+  - medium: 11-100 tokens
+  - long: 101-500 tokens
+  - extra-long: >500 tokens
 
-## English - Blog Authorship Corpus
-- **Languages**: English
-- **Genres**: Blogs (personal posts)
-- **Scale**: ~681k posts by 19,320 bloggers (≈140M words)
-- **Length**: Medium (avg ~35 posts; ~7,250 words per blogger)
-- **Author Labels**: Yes (one blog per author; demographics available)
-- **Link**: https://huggingface.co/datasets/barilan/blog_authorship_corpus
-- **Notes**: Classic author-profiling dataset from Blogger.com
+## Raw sources
 
-## English - arXiv Papers
-- **Languages**: English
-- **Genres**: Scientific research papers
-- **Scale**: ~1.7M papers
-- **Length**: Long (5-15 pages, full papers)
-- **Author Labels**: Yes (full author list per paper)
-- **Link**: https://www.kaggle.com/datasets/Cornell-University/arxiv
-- **Notes**: Scholarly preprints across scientific domains
+| Source | Languages | Primary genre(s) | Upstream scale | Author labels | Notes |
+| --- | --- | --- | --- | --- | --- |
+| Exorde | Multilingual | Social media, news, forums | 65M+ items per week | Yes | Social/news/forum content with explicit author hash |
+| Babel Briefings | 30+ | News headlines | 4.7M | Partial | Publisher or organization level authorship only |
+| Amazon Reviews Multi (MARC) | 6 | E-commerce reviews | 200k+ per language | Yes | Multilingual product reviews |
+| Blog Authorship Corpus | English | Blogs | 681k posts | Yes | Classic Blogger corpus |
+| arXiv Abstracts (metadata snapshot) | English | Research papers | 1.7M+ records | Yes | Uses first author from metadata |
+| Xiaohongshu / Weibo | Chinese | Social media | 11k+ | Yes | Chinese social posts/comments |
+| Douban Reviews | Chinese | Media, book, music reviews | 13.5M | Yes | Review platform data |
+| Hindi Discourse Stories | Hindi | Literature | 53 stories | Yes | Short stories with author labels |
+| Spanish PD Books | Spanish | Literature | 300k+ texts | Yes | Public-domain books |
+| French PD Books | French | Literature | 289k+ books | Yes | Public-domain books |
+| Arabic Classical Poetry | Arabic | Poetry | 70k poems | Yes | Poet-labeled classical poetry |
+| Russian PD Corpus | Russian | Literature, periodicals | 8.5k titles | Yes | Public-domain corpus |
+| German PD Corpus | German | Literature, newspapers | 260k+ texts | Yes | Public-domain corpus |
+| Stack Exchange crawl | Multilingual | Q&A | Crawl-dependent | Yes | Public Q&A posts/comments from the Phase 2 crawl |
+| Project Gutenberg crawl | Multilingual | Literature, essays, speeches | Crawl-dependent | Yes | Public-domain or public-access texts from the Phase 2 crawl |
+| Wikisource crawl | Multilingual | Literature, drama, speeches | Crawl-dependent | Yes | Public-source texts from the Phase 2 crawl |
+| YouTube comments crawl | Multilingual | Social media comments | Crawl-dependent | Yes | Public comments collected through the Phase 2 crawl |
 
----
+## Realized contribution in the current combined release
 
-## Chinese - Xiaohongshu / Weibo
-- **Languages**: Chinese
-- **Genres**: Social media (Weibo/XHS)
-- **Scale**: ~11,329 posts + comments
-- **Length**: Short (1-3 sentence posts)
-- **Author Labels**: Yes (user IDs included)
-- **Link**: https://www.kaggle.com/datasets/yuanchunhong/xiaohongshu-aigc-comments-including-postsdataset
-- **Notes**: Chinese microblog content with metadata
+These are the retained document counts reported in the paper after filtering, redundancy reduction, cross-phase merge cleanup, and final selection.
 
-## Chinese - Douban Reviews
-- **Languages**: Chinese
-- **Genres**: Reviews (books, movies, music)
-- **Scale**: ~13.5M reviews
-- **Length**: Short-medium
-- **Author Labels**: Yes (~383k unique reviewers)
-- **Link**: https://www.kaggle.com/datasets/fengzhujoey/douban-datasetratingreviewside-information
-- **Notes**: Multi-domain review dataset with ratings
-- **Deleted (Dropped Dataset)**: books_cleaned.txt movies_cleaned.txt music_cleaned.txt because of data quality issues
+| Source | Docs | Share |
+| --- | ---: | ---: |
+| Exorde | 94,231 | 22.0% |
+| Wikisource | 78,984 | 18.4% |
+| Babel Briefings | 73,676 | 17.2% |
+| YouTube comments | 71,808 | 16.8% |
+| Blog Authorship Corpus | 22,494 | 5.3% |
+| Project Gutenberg | 18,739 | 4.4% |
+| Russian PD Corpus | 12,728 | 3.0% |
+| Douban Reviews | 10,424 | 2.4% |
+| Xiaohongshu / Weibo | 8,869 | 2.1% |
+| French PD Books | 8,761 | 2.0% |
+| German PD Corpus | 8,400 | 2.0% |
+| Spanish PD Books | 4,961 | 1.2% |
+| Amazon Reviews Multi (MARC) | 4,924 | 1.2% |
+| Stack Exchange crawl | 4,651 | 1.1% |
+| Arabic Classical Poetry | 2,503 | 0.6% |
+| arXiv Abstracts | 1,784 | 0.4% |
+| Hindi Discourse Stories | 213 | 0.0% |
 
----
+No configured source is fully absent from the current combined release, but the source distribution is highly skewed: Exorde, Wikisource, Babel Briefings, and YouTube comments together contribute 74.4% of all documents.
 
-## Hindi - Hindi Discourse Dataset
-- **Languages**: Hindi
-- **Genres**: Literature (short stories)
-- **Scale**: 53 stories by 11 authors
-- **Length**: Medium (multi-page stories)
-- **Author Labels**: Yes (famous 20th-century authors)
-- **Link**: https://github.com/midas-research/hindi-discourse?tab=readme-ov-file
-- **Notes**: Public-domain Hindi literature labeled for discourse modes
+## Release and licensing note
 
----
+The paper distinguishes between:
 
-## Spanish - Public Domain Books
-- **Languages**: Spanish
-- **Genres**: Literature (books)
-- **Scale**: ~302,640 texts; 13.9B words
-- **Length**: Long (essays to novels)
-- **Author Labels**: Yes (public domain metadata)
-- **Link**: https://huggingface.co/datasets/PleIAs/Spanish-PD-Books
-- **Notes**: Large corpus from national libraries
+- Tier A: sources whose normalized text can be redistributed more directly
+- Tier B: sources that are safer to support through manifest-only reconstruction
 
----
+Examples of conservative Tier B handling in the paper include MARC, Blog Authorship, arXiv metadata-derived text, Xiaohongshu, Douban, Hindi Discourse, Project Gutenberg, Wikisource, and YouTube comments. For source-specific licensing and redistribution notes, see the appendix tables in [`paper/colm_latex.tex`](/Users/maoxunhuang/Desktop/AuthBench/paper/colm_latex.tex).
 
-## French - Public Domain Books
-- **Languages**: French
-- **Genres**: Literature (books)
-- **Scale**: ~289,000 books (~16.4B words)
-- **Length**: Long (novels, nonfiction)
-- **Author Labels**: Yes
-- **Link**: https://huggingface.co/datasets/PleIAs/French-PD-Books
-- **Notes**: From BnF Gallica archives
+## Notes on terminology
 
----
-
-## Arabic - Classical Poetry
-- **Languages**: Arabic
-- **Genres**: Poetry (classical)
-- **Scale**: ~70,000 poems by 750+ poets
-- **Length**: Short to long (lines to stanzas)
-- **Author Labels**: Yes (poet name included)
-- **Link**: https://www.kaggle.com/datasets/mdanok/arabic-poetry-dataset
-- **Notes**: Comprehensive poetry collection from 6th-20th century
-
----
-
-## Russian - Public Domain Corpus
-- **Languages**: Russian
-- **Genres**: Literature (books, periodicals)
-- **Scale**: 8,525 titles; ~995M words
-- **Length**: Long
-- **Author Labels**: Yes
-- **Link**: https://huggingface.co/datasets/PleIAs/Russian-PD
-- **Notes**: Mostly 19th-century works from Internet Archive
-
----
-
-## German - Public Domain Corpus
-- **Languages**: German
-- **Genres**: Literature (books, newspapers)
-- **Scale**: ~260,638 texts; ~37.65B words
-- **Length**: Long
-- **Author Labels**: Yes
-- **Link**: https://huggingface.co/datasets/PleIAs/German-PD
-- **Notes**: Largest open German corpus; 17th-19th century works
+- `Babel Briefings` should not be treated as clean per-user authorship data; its labels are only partial.
+- `arXiv` in this repository refers to metadata snapshots and uses the first listed author during preprocessing.
+- `Xiaohongshu / Weibo` is the naming used in the paper appendix for the Chinese social-media source currently referenced in the manifest as `xiaohongshu`.
+- The current paper describes the full combined benchmark, which includes both the phase-1 curated sources and the phase-2 crawled sources.

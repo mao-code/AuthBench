@@ -520,6 +520,7 @@ def render_full_results_tables(
     )
 
     return rf"""\subsection{{Overall Leaderboard Full Results}}
+This subsection reports the complete zero-shot leaderboard across all evaluated model families on the AuthBench test split.
 \begingroup
 \scriptsize
 \setlength{{\tabcolsep}}{{5pt}}
@@ -545,19 +546,51 @@ def render_full_results_tables(
 \endgroup
 
 \subsection{{Overall Metric Bar Charts}}
+These figures provide metric-wise visual summaries of the full leaderboard and make the relative spread between model families easier to compare at a glance.
 \begin{{figure}}[t]
   \centering
-  \safeincludegraphics[width=0.32\linewidth]{{plots/overall_success5_bar.pdf}}\hfill
-  \safeincludegraphics[width=0.32\linewidth]{{plots/overall_recall5_bar.pdf}}\hfill
-  \safeincludegraphics[width=0.32\linewidth]{{plots/overall_ndcg5_bar.pdf}}\\[4pt]
-  \safeincludegraphics[width=0.32\linewidth]{{plots/overall_mrr_bar.pdf}}\hfill
-  \safeincludegraphics[width=0.32\linewidth]{{plots/overall_roc_auc_bar.pdf}}\hfill
-  \safeincludegraphics[width=0.32\linewidth]{{plots/overall_eer_bar.pdf}}
-  \caption{{Updated overall performance bar charts from the new analysis outputs. The top row reports retrieval metrics (S@5, R@5, nDCG@5), and the bottom row reports MRR and the two verification metrics (ROC-AUC and EER).}}
-  \label{{fig:overall-performance-bars}}
+  \safeincludegraphics[width=0.75\linewidth]{{plots/overall_success5_bar.pdf}}
+  \caption{{Overall AuthBench performance by Success@5 (S@5).}}
+  \label{{fig:overall-success5-bar}}
+\end{{figure}}
+
+\begin{{figure}}[t]
+  \centering
+  \safeincludegraphics[width=0.75\linewidth]{{plots/overall_recall5_bar.pdf}}
+  \caption{{Overall AuthBench performance by Recall@5 (R@5).}}
+  \label{{fig:overall-recall5-bar}}
+\end{{figure}}
+
+\begin{{figure}}[t]
+  \centering
+  \safeincludegraphics[width=0.75\linewidth]{{plots/overall_ndcg5_bar.pdf}}
+  \caption{{Overall AuthBench performance by nDCG@5.}}
+  \label{{fig:overall-ndcg5-bar}}
+\end{{figure}}
+
+\begin{{figure}}[t]
+  \centering
+  \safeincludegraphics[width=0.75\linewidth]{{plots/overall_mrr_bar.pdf}}
+  \caption{{Overall AuthBench performance by MRR.}}
+  \label{{fig:overall-mrr-bar}}
+\end{{figure}}
+
+\begin{{figure}}[t]
+  \centering
+  \safeincludegraphics[width=0.75\linewidth]{{plots/overall_roc_auc_bar.pdf}}
+  \caption{{Overall AuthBench performance by ROC-AUC.}}
+  \label{{fig:overall-rocauc-bar}}
+\end{{figure}}
+
+\begin{{figure}}[t]
+  \centering
+  \safeincludegraphics[width=0.75\linewidth]{{plots/overall_eer_bar.pdf}}
+  \caption{{Overall AuthBench performance by EER.}}
+  \label{{fig:overall-eer-bar}}
 \end{{figure}}
 
 \subsection{{Language-wise Full Results}}
+The following tables provide the complete language-level breakdown for both retrieval and verification-oriented evaluation.
 \begingroup
 \scriptsize
 \setlength{{\tabcolsep}}{{4pt}}
@@ -607,6 +640,7 @@ def render_full_results_tables(
 \endgroup
 
 \subsection{{Primary-genre Full Results}}
+These tables report the full genre-level breakdown, highlighting how strongly authorship performance depends on discourse type.
 \begingroup
 \scriptsize
 \setlength{{\tabcolsep}}{{4pt}}
@@ -656,6 +690,7 @@ def render_full_results_tables(
 \endgroup
 
 \subsection{{Length-bucket Full Results}}
+These tables give the complete length-wise breakdown and make the sparse-text versus long-document gap explicit across all evaluated systems.
 \begingroup
 \scriptsize
 \setlength{{\tabcolsep}}{{5pt}}

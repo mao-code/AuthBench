@@ -3,6 +3,8 @@
 # Run from the repository root (AuthBench).
 set -euo pipefail
 
+# sbatch -p nlplarge-sasha-highpri --nodelist=nlplarge-compute-01 --gres=gpu:1 --ntasks=1 --cpus-per-task=4 --mem=128G -t 720:00:00 eval/scripts/train_eval_authorship_methods.sh
+
 export PYTHONPATH="$(pwd):${PYTHONPATH:-}"
 
 DATASET_ROOT="${DATASET_ROOT:-processing/outputs/authbench}"
