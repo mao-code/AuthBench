@@ -99,6 +99,7 @@ def collate_pairs(
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Contrastive training on AuthBench.")
+    parser.set_defaults(part_freeze_encoder=True)
     parser.add_argument("--dataset-root", type=Path, default=DEFAULT_DATASET_ROOT)
     parser.add_argument("--model", default="e5-large-v2", help="Model key from model_registry or HF repo id.")
     parser.add_argument(
@@ -195,22 +196,58 @@ def parse_args() -> argparse.Namespace:
         help="Hidden size per LSTM direction for the PART BiLSTM head.",
     )
     parser.add_argument(
+        "--part-freeze-encoder",
+        dest="part_freeze_encoder",
+        action="store_true",
+        help="Freeze the base encoder and train only the PART head (default).",
+    )
+    parser.add_argument(
+        "--part-train-encoder",
+        dest="part_freeze_encoder",
+        action="store_false",
+        help="Allow PART to tune the base encoder (for example via LoRA).",
+    )
+    parser.add_argument(
+        "--part-temperature-init",
+        type=float,
+        default=0.07,
+        help="Initial learnable PART temperature/logit-scale parameter.",
+    )
+    parser.add_argument(
         "--luar-window-size",
         type=int,
         default=32,
         help="Token window size for each LUAR excerpt.",
     )
     parser.add_argument(
+        "--luar-episode-length",
+        type=int,
+        default=16,
+        help="Maximum number of windows/doc-units sampled in one LUAR training episode.",
+    )
+    parser.add_argument(
+        "--luar-samples-per-author",
+        type=int,
+        default=2,
+        help="Number of LUAR episodes sampled per author for supervised contrastive training.",
+    )
+    parser.add_argument(
+        "--luar-max-eval-windows",
+        type=int,
+        default=None,
+        help="Optional cap on LUAR eval-time windows per document. Defaults to using every 32-token window.",
+    )
+    parser.add_argument(
         "--luar-max-episode-docs",
         type=int,
-        default=4,
-        help="Maximum number of documents/windows in one LUAR training episode.",
+        default=None,
+        help=argparse.SUPPRESS,
     )
     parser.add_argument(
         "--luar-eval-episode-docs",
         type=int,
-        default=4,
-        help="Number of windows used to encode one document at LUAR evaluation time.",
+        default=None,
+        help=argparse.SUPPRESS,
     )
     parser.add_argument(
         "--luar-embedding-size",
@@ -233,7 +270,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--stel-control-keys",
         nargs="+",
-        default=["genre", "source"],
+        default=["source", "genre"],
         help="Metadata keys used to content-control STEL negatives, in fallback order.",
     )
     parser.add_argument("--log-file", type=Path, help="Optional JSONL log of evaluation metrics.")
@@ -253,7 +290,20 @@ def parse_args() -> argparse.Namespace:
         help="Disable the automatic retry with trust_remote_code=True when a model repo "
         "contains custom code.",
     )
-    return parser.parse_args()
+    args = parser.parse_args()
+    if args.luar_max_episode_docs is not None:
+        args.luar_episode_length = args.luar_max_episode_docs
+    if args.luar_eval_episode_docs is not None:
+        if args.luar_max_eval_windows is not None and args.luar_max_eval_windows != args.luar_eval_episode_docs:
+            raise ValueError("--luar-max-eval-windows conflicts with legacy --luar-eval-episode-docs.")
+        args.luar_max_eval_windows = args.luar_eval_episode_docs
+    if args.luar_episode_length < 1:
+        raise ValueError("--luar-episode-length must be >= 1.")
+    if args.luar_samples_per_author < 2:
+        raise ValueError("--luar-samples-per-author must be >= 2.")
+    if args.luar_max_eval_windows is not None and args.luar_max_eval_windows < 1:
+        raise ValueError("--luar-max-eval-windows must be >= 1 when set.")
+    return args
 
 
 def encode(model, inputs, pooling: str) -> torch.Tensor:
@@ -312,9 +362,12 @@ def _init_wandb(args: argparse.Namespace):
             "late_interaction": args.late_interaction,
             "eval_ks": args.eval_ks,
             "part_hidden_size": args.part_hidden_size,
+            "part_freeze_encoder": args.part_freeze_encoder,
+            "part_temperature_init": args.part_temperature_init,
             "luar_window_size": args.luar_window_size,
-            "luar_max_episode_docs": args.luar_max_episode_docs,
-            "luar_eval_episode_docs": args.luar_eval_episode_docs,
+            "luar_episode_length": args.luar_episode_length,
+            "luar_samples_per_author": args.luar_samples_per_author,
+            "luar_max_eval_windows": args.luar_max_eval_windows,
             "luar_embedding_size": args.luar_embedding_size,
             "luar_temperature": args.luar_temperature,
             "stel_margin": args.stel_margin,
@@ -371,6 +424,12 @@ def _apply_lora_if_enabled(model, args: argparse.Namespace) -> Tuple[torch.nn.Mo
         "target_modules": [],
     }
     if args.lora_rank <= 0:
+        return model, lora_details
+    if args.authorship_method == "part" and args.part_freeze_encoder:
+        print(
+            "[WARN] PART freezes the encoder by default; skipping LoRA adapters. "
+            "Use --part-train-encoder to enable encoder tuning."
+        )
         return model, lora_details
 
     try:
@@ -521,8 +580,11 @@ def train() -> int:
             method=args.authorship_method,
             pooling=args.pooling,
             part_hidden_size=args.part_hidden_size,
+            part_temperature_init=args.part_temperature_init,
             luar_embedding_size=args.luar_embedding_size,
         )
+        if args.authorship_method == "part" and args.part_freeze_encoder:
+            train_model.set_base_encoder_trainable(False)
 
     train_model.to(device)
     trainable_params, total_params = _count_parameters(train_model)

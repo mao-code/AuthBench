@@ -41,10 +41,54 @@ def mean_pool_hidden_states(hidden_states: torch.Tensor, attention_mask: torch.T
     return (hidden_states * mask).sum(dim=1) / mask.sum(dim=1).clamp_min(1e-9)
 
 
-def symmetric_infonce_loss(a: torch.Tensor, b: torch.Tensor, temperature: float) -> torch.Tensor:
-    logits = torch.matmul(F.normalize(a, dim=1), F.normalize(b, dim=1).T) / max(temperature, 1e-6)
+def symmetric_infonce_loss(
+    a: torch.Tensor,
+    b: torch.Tensor,
+    temperature: Optional[float] = None,
+    logit_scale: Optional[torch.Tensor] = None,
+) -> torch.Tensor:
+    logits = torch.matmul(F.normalize(a, dim=1), F.normalize(b, dim=1).T)
+    if logit_scale is not None:
+        logits = logits * torch.exp(logit_scale).clamp(max=100.0)
+    else:
+        logits = logits / max(float(temperature or 0.05), 1e-6)
     labels = torch.arange(logits.size(0), device=logits.device)
     return (F.cross_entropy(logits, labels) + F.cross_entropy(logits.T, labels)) / 2
+
+
+def supervised_contrastive_loss(
+    features: torch.Tensor,
+    labels: torch.Tensor,
+    temperature: float,
+) -> torch.Tensor:
+    if features.ndim != 3:
+        raise ValueError("Supervised contrastive loss expects features with shape (batch, views, dim).")
+    if labels.ndim != 1 or labels.size(0) != features.size(0):
+        raise ValueError("Labels must be a 1D tensor aligned with the batch dimension.")
+
+    batch_size, num_views, hidden_size = features.shape
+    flat_features = F.normalize(features, dim=2).reshape(batch_size * num_views, hidden_size)
+    flat_labels = labels.unsqueeze(1).repeat(1, num_views).reshape(-1)
+
+    logits = torch.matmul(flat_features, flat_features.T) / max(temperature, 1e-6)
+    logits = logits - logits.max(dim=1, keepdim=True).values.detach()
+
+    same_label = flat_labels.unsqueeze(0) == flat_labels.unsqueeze(1)
+    logits_mask = ~torch.eye(batch_size * num_views, device=features.device, dtype=torch.bool)
+    positive_mask = same_label & logits_mask
+
+    exp_logits = torch.exp(logits) * logits_mask
+    log_prob = logits - torch.log(exp_logits.sum(dim=1, keepdim=True).clamp_min(1e-12))
+
+    positive_counts = positive_mask.sum(dim=1)
+    valid_rows = positive_counts > 0
+    if not valid_rows.any():
+        raise ValueError("Supervised contrastive loss requires at least one positive per anchor.")
+
+    mean_log_prob_pos = (
+        (positive_mask.float() * log_prob).sum(dim=1) / positive_counts.clamp_min(1).float()
+    )
+    return -mean_log_prob_pos[valid_rows].mean()
 
 
 def cosine_triplet_margin_loss(
@@ -84,10 +128,13 @@ class AuthorshipMethodArtifacts:
     method: str
     pooling: str
     part_hidden_size: int
+    part_freeze_encoder: bool
+    part_temperature_init: float
     luar_embedding_size: int
     luar_window_size: int
-    luar_max_episode_docs: int
-    luar_eval_episode_docs: int
+    luar_episode_length: int
+    luar_samples_per_author: int
+    luar_max_eval_windows: Optional[int]
     luar_temperature: float
     stel_margin: float
     stel_control_keys: List[str]
@@ -160,6 +207,16 @@ def _sample_two_examples(examples: Sequence[AuthorTextExample]) -> Tuple[AuthorT
     return only, only
 
 
+def _resolve_window_content_size(tokenizer, window_size: int) -> int:
+    special_tokens = 2
+    if hasattr(tokenizer, "num_special_tokens_to_add"):
+        try:
+            special_tokens = int(tokenizer.num_special_tokens_to_add(pair=False))
+        except Exception:
+            special_tokens = 2
+    return max(1, window_size - max(0, special_tokens))
+
+
 def _tokenize_texts(
     tokenizer,
     texts: Sequence[str],
@@ -216,9 +273,12 @@ def _sample_episode_size(max_episode_docs: int) -> int:
 
 
 def _prepare_window_from_token_ids(tokenizer, token_ids: List[int], window_size: int) -> Tuple[List[int], List[int]]:
+    content_window_size = _resolve_window_content_size(tokenizer, window_size)
     if not token_ids:
         filler_id = tokenizer.unk_token_id or tokenizer.pad_token_id or tokenizer.eos_token_id or 0
         token_ids = [filler_id]
+    if len(token_ids) > content_window_size:
+        token_ids = token_ids[:content_window_size]
     prepared = tokenizer.prepare_for_model(
         token_ids,
         add_special_tokens=True,
@@ -231,10 +291,11 @@ def _prepare_window_from_token_ids(tokenizer, token_ids: List[int], window_size:
 
 
 def _token_window_ids(tokenizer, text: str, window_size: int) -> Tuple[List[int], List[int]]:
+    content_window_size = _resolve_window_content_size(tokenizer, window_size)
     token_ids = tokenizer(text, add_special_tokens=False, truncation=False)["input_ids"]
-    if len(token_ids) > window_size:
-        start = random.randint(0, len(token_ids) - window_size)
-        token_ids = token_ids[start : start + window_size]
+    if len(token_ids) > content_window_size:
+        start = random.randint(0, len(token_ids) - content_window_size)
+        token_ids = token_ids[start : start + content_window_size]
     return _prepare_window_from_token_ids(tokenizer, token_ids, window_size)
 
 
@@ -254,53 +315,42 @@ class LuarBatchCollator:
         tokenizer,
         *,
         window_size: int,
-        max_episode_docs: int,
+        episode_length: int,
+        samples_per_author: int,
     ):
         self.author_to_examples = author_to_examples
         self.tokenizer = tokenizer
         self.window_size = window_size
-        self.max_episode_docs = max_episode_docs
+        self.episode_length = episode_length
+        self.samples_per_author = max(2, samples_per_author)
 
     def __call__(self, author_ids: Sequence[str]):
-        episode_size = _sample_episode_size(self.max_episode_docs)
-        anchor_ids: List[List[List[int]]] = []
-        anchor_masks: List[List[List[int]]] = []
-        positive_ids: List[List[List[int]]] = []
-        positive_masks: List[List[List[int]]] = []
+        episode_size = _sample_episode_size(self.episode_length)
+        batch_ids: List[List[List[List[int]]]] = []
+        batch_masks: List[List[List[List[int]]]] = []
 
         for author_id in author_ids:
             docs = self.author_to_examples[author_id]
-            anchor_docs = _sample_examples_with_replacement(docs, episode_size)
-            positive_docs = _sample_examples_with_replacement(docs, episode_size)
+            author_view_ids: List[List[List[int]]] = []
+            author_view_masks: List[List[List[int]]] = []
+            for _ in range(self.samples_per_author):
+                sampled_docs = _sample_examples_with_replacement(docs, episode_size)
+                episode_ids: List[List[int]] = []
+                episode_masks: List[List[int]] = []
+                for example in sampled_docs:
+                    ids, mask = _token_window_ids(self.tokenizer, example.text, self.window_size)
+                    episode_ids.append(ids)
+                    episode_masks.append(mask)
+                author_view_ids.append(episode_ids)
+                author_view_masks.append(episode_masks)
 
-            episode_anchor_ids: List[List[int]] = []
-            episode_anchor_masks: List[List[int]] = []
-            episode_positive_ids: List[List[int]] = []
-            episode_positive_masks: List[List[int]] = []
+            batch_ids.append(author_view_ids)
+            batch_masks.append(author_view_masks)
 
-            for example in anchor_docs:
-                ids, mask = _token_window_ids(self.tokenizer, example.text, self.window_size)
-                episode_anchor_ids.append(ids)
-                episode_anchor_masks.append(mask)
-            for example in positive_docs:
-                ids, mask = _token_window_ids(self.tokenizer, example.text, self.window_size)
-                episode_positive_ids.append(ids)
-                episode_positive_masks.append(mask)
-
-            anchor_ids.append(episode_anchor_ids)
-            anchor_masks.append(episode_anchor_masks)
-            positive_ids.append(episode_positive_ids)
-            positive_masks.append(episode_positive_masks)
-
-        anchor_inputs = {
-            "input_ids": torch.tensor(anchor_ids, dtype=torch.long),
-            "attention_mask": torch.tensor(anchor_masks, dtype=torch.long),
+        return {
+            "input_ids": torch.tensor(batch_ids, dtype=torch.long),
+            "attention_mask": torch.tensor(batch_masks, dtype=torch.long),
         }
-        positive_inputs = {
-            "input_ids": torch.tensor(positive_ids, dtype=torch.long),
-            "attention_mask": torch.tensor(positive_masks, dtype=torch.long),
-        }
-        return anchor_inputs, positive_inputs
 
 
 def _control_value(example: AuthorTextExample, keys: Sequence[str]) -> Tuple[str, ...]:
@@ -455,6 +505,7 @@ class AuthorshipTrainingModel(nn.Module):
         method: str,
         pooling: str,
         part_hidden_size: int,
+        part_temperature_init: float,
         luar_embedding_size: int,
     ):
         super().__init__()
@@ -466,12 +517,14 @@ class AuthorshipTrainingModel(nn.Module):
             raise ValueError("Could not determine hidden size from model config.")
 
         self.part_head: Optional[nn.Module] = None
+        self.part_logit_scale: Optional[nn.Parameter] = None
         self.luar_attention: Optional[nn.Module] = None
         self.luar_projection: Optional[nn.Module] = None
 
         if method == "part":
             hidden = max(1, part_hidden_size)
             self.part_head = DynamicLSTMHead(self.hidden_size, hidden)
+            self.part_logit_scale = nn.Parameter(torch.tensor([part_temperature_init], dtype=torch.float32))
             self.output_dim = hidden * 2
         elif method == "luar":
             self.luar_attention = LuarSelfAttention(self.hidden_size)
@@ -479,6 +532,10 @@ class AuthorshipTrainingModel(nn.Module):
             self.output_dim = luar_embedding_size
         else:
             self.output_dim = self.hidden_size
+
+    def set_base_encoder_trainable(self, trainable: bool) -> None:
+        for parameter in self.base_model.parameters():
+            parameter.requires_grad = trainable
 
     def encode_documents(self, input_ids: torch.Tensor, attention_mask: torch.Tensor) -> torch.Tensor:
         outputs = self.base_model(input_ids=input_ids, attention_mask=attention_mask)
@@ -496,21 +553,34 @@ class AuthorshipTrainingModel(nn.Module):
         if self.luar_attention is None or self.luar_projection is None:
             raise RuntimeError("LUAR modules are not initialized.")
 
-        batch_size, episode_size, seq_len = input_ids.shape
-        flat_ids = input_ids.reshape(batch_size * episode_size, seq_len)
-        flat_mask = attention_mask.reshape(batch_size * episode_size, seq_len)
+        squeeze_views = False
+        if input_ids.ndim == 3:
+            input_ids = input_ids.unsqueeze(1)
+            attention_mask = attention_mask.unsqueeze(1)
+            squeeze_views = True
+        if input_ids.ndim != 4:
+            raise ValueError("LUAR episode encoding expects input_ids with shape (batch, views, episode, seq_len).")
+
+        batch_size, num_views, episode_size, seq_len = input_ids.shape
+        flat_ids = input_ids.reshape(batch_size * num_views * episode_size, seq_len)
+        flat_mask = attention_mask.reshape(batch_size * num_views * episode_size, seq_len)
         outputs = self.base_model(input_ids=flat_ids, attention_mask=flat_mask)
         doc_embeddings = mean_pool_hidden_states(outputs.last_hidden_state, flat_mask)
-        doc_embeddings = doc_embeddings.reshape(batch_size, episode_size, -1)
+        doc_embeddings = doc_embeddings.reshape(batch_size * num_views, episode_size, -1)
         attended = self.luar_attention(doc_embeddings)
         pooled = attended.max(dim=1).values
         projected = self.luar_projection(pooled)
-        return F.normalize(projected, p=2, dim=1)
+        projected = F.normalize(projected, p=2, dim=1).reshape(batch_size, num_views, -1)
+        if squeeze_views:
+            return projected[:, 0]
+        return projected
 
     def export_artifacts(self) -> Dict[str, Dict[str, torch.Tensor]]:
         payload: Dict[str, Dict[str, torch.Tensor]] = {}
         if self.part_head is not None:
             payload["part_head"] = self.part_head.state_dict()
+        if self.part_logit_scale is not None:
+            payload["part_logit_scale"] = {"value": self.part_logit_scale.detach().cpu()}
         if self.luar_attention is not None:
             payload["luar_attention"] = self.luar_attention.state_dict()
         if self.luar_projection is not None:
@@ -530,7 +600,7 @@ class AuthorshipMethodEmbedder:
         query_prefix: str,
         doc_prefix: str,
         luar_window_size: int,
-        luar_eval_episode_docs: int,
+        luar_max_eval_windows: Optional[int],
     ):
         self.model = model
         self.tokenizer = tokenizer
@@ -540,7 +610,7 @@ class AuthorshipMethodEmbedder:
         self.query_prefix = query_prefix
         self.doc_prefix = doc_prefix
         self.luar_window_size = luar_window_size
-        self.luar_eval_episode_docs = max(1, luar_eval_episode_docs)
+        self.luar_max_eval_windows = luar_max_eval_windows
 
     def _apply_prefix(self, texts: Sequence[str], prefix: str) -> List[str]:
         if prefix:
@@ -589,22 +659,21 @@ class AuthorshipMethodEmbedder:
         return EmbeddingResult(vectors=torch.cat(vectors, dim=0) if vectors else torch.empty(0))
 
     def _build_eval_episode(self, text: str) -> Tuple[List[List[int]], List[List[int]]]:
+        content_window_size = _resolve_window_content_size(self.tokenizer, self.luar_window_size)
         token_ids = self.tokenizer(text, add_special_tokens=False, truncation=False)["input_ids"]
         if not token_ids:
             token_ids = [self.tokenizer.unk_token_id or self.tokenizer.pad_token_id or 0]
-        chunks = [token_ids[start : start + self.luar_window_size] for start in range(0, len(token_ids), self.luar_window_size)]
+        chunks = [token_ids[start : start + content_window_size] for start in range(0, len(token_ids), content_window_size)]
         if not chunks:
             chunks = [token_ids]
-        if len(chunks) >= self.luar_eval_episode_docs:
-            if len(chunks) == self.luar_eval_episode_docs:
+        if self.luar_max_eval_windows is not None and len(chunks) > self.luar_max_eval_windows:
+            if len(chunks) == self.luar_max_eval_windows:
                 selected = chunks
             else:
-                indices = torch.linspace(0, len(chunks) - 1, steps=self.luar_eval_episode_docs)
+                indices = torch.linspace(0, len(chunks) - 1, steps=self.luar_max_eval_windows)
                 selected = [chunks[int(round(index.item()))] for index in indices]
         else:
             selected = list(chunks)
-            while len(selected) < self.luar_eval_episode_docs:
-                selected.append(chunks[-1])
 
         input_ids: List[List[int]] = []
         attention_masks: List[List[int]] = []
@@ -627,27 +696,20 @@ class AuthorshipMethodEmbedder:
         was_training = self.model.training
         self.model.eval()
 
-        iterator: Iterable[List[str]] = (
-            texts[start : start + batch_size] for start in range(0, len(texts), batch_size)
-        )
+        iterator: Iterable[str] = texts
         if show_progress:
             iterator = tqdm(
                 iterator,
-                total=(len(texts) + batch_size - 1) // batch_size,
+                total=len(texts),
                 desc="Embedding",
             )
 
         with torch.inference_mode():
-            for batch in iterator:
-                batch_ids: List[List[List[int]]] = []
-                batch_masks: List[List[List[int]]] = []
-                for text in batch:
-                    input_ids, attention_masks = self._build_eval_episode(text)
-                    batch_ids.append(input_ids)
-                    batch_masks.append(attention_masks)
+            for text in iterator:
+                input_ids, attention_masks = self._build_eval_episode(text)
                 inputs = {
-                    "input_ids": torch.tensor(batch_ids, dtype=torch.long, device=self.device),
-                    "attention_mask": torch.tensor(batch_masks, dtype=torch.long, device=self.device),
+                    "input_ids": torch.tensor([input_ids], dtype=torch.long, device=self.device),
+                    "attention_mask": torch.tensor([attention_masks], dtype=torch.long, device=self.device),
                 }
                 embeddings = self.model.encode_episodes(inputs["input_ids"], inputs["attention_mask"])
                 vectors.append(embeddings.cpu())
@@ -717,7 +779,8 @@ def build_authorship_training_components(
             author_to_examples,
             tokenizer,
             window_size=args.luar_window_size,
-            max_episode_docs=args.luar_max_episode_docs,
+            episode_length=args.luar_episode_length,
+            samples_per_author=args.luar_samples_per_author,
         )
         return dataset, collate
 
@@ -751,15 +814,13 @@ def compute_authorship_method_loss(
         positive_inputs = {key: value.to(device) for key, value in positive_inputs.items()}
         anchor_embeddings = model.encode_documents(anchor_inputs["input_ids"], anchor_inputs["attention_mask"])
         positive_embeddings = model.encode_documents(positive_inputs["input_ids"], positive_inputs["attention_mask"])
-        return symmetric_infonce_loss(anchor_embeddings, positive_embeddings, args.temperature)
+        return symmetric_infonce_loss(anchor_embeddings, positive_embeddings, logit_scale=model.part_logit_scale)
 
     if args.authorship_method == "luar":
-        anchor_inputs, positive_inputs = batch
-        anchor_inputs = {key: value.to(device) for key, value in anchor_inputs.items()}
-        positive_inputs = {key: value.to(device) for key, value in positive_inputs.items()}
-        anchor_embeddings = model.encode_episodes(anchor_inputs["input_ids"], anchor_inputs["attention_mask"])
-        positive_embeddings = model.encode_episodes(positive_inputs["input_ids"], positive_inputs["attention_mask"])
-        return symmetric_infonce_loss(anchor_embeddings, positive_embeddings, args.luar_temperature)
+        episode_inputs = {key: value.to(device) for key, value in batch.items()}
+        episode_embeddings = model.encode_episodes(episode_inputs["input_ids"], episode_inputs["attention_mask"])
+        labels = torch.arange(episode_embeddings.size(0), device=device)
+        return supervised_contrastive_loss(episode_embeddings, labels, args.luar_temperature)
 
     if args.authorship_method == "stel":
         anchor_inputs, positive_inputs, negative_inputs = batch
@@ -794,7 +855,7 @@ def build_authorship_eval_embedder(
         query_prefix=args.query_prefix,
         doc_prefix=args.doc_prefix,
         luar_window_size=args.luar_window_size,
-        luar_eval_episode_docs=args.luar_eval_episode_docs,
+        luar_max_eval_windows=args.luar_max_eval_windows,
     )
 
 
@@ -803,10 +864,13 @@ def build_method_artifacts(args) -> AuthorshipMethodArtifacts:
         method=args.authorship_method,
         pooling=args.pooling,
         part_hidden_size=args.part_hidden_size,
+        part_freeze_encoder=args.part_freeze_encoder,
+        part_temperature_init=args.part_temperature_init,
         luar_embedding_size=args.luar_embedding_size,
         luar_window_size=args.luar_window_size,
-        luar_max_episode_docs=args.luar_max_episode_docs,
-        luar_eval_episode_docs=args.luar_eval_episode_docs,
+        luar_episode_length=args.luar_episode_length,
+        luar_samples_per_author=args.luar_samples_per_author,
+        luar_max_eval_windows=args.luar_max_eval_windows,
         luar_temperature=args.luar_temperature,
         stel_margin=args.stel_margin,
         stel_control_keys=list(args.stel_control_keys),

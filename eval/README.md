@@ -240,10 +240,24 @@ JSONL logs, and W&B (if enabled) for downstream analysis.
 step 0, every `--eval-every` steps, and at the end on both dev and test.
 
 The trainer also supports three authorship-specific recipes via `--authorship-method`:
-- `part` – PART-style same-author contrastive training with a BiLSTM head over token states.
-- `luar` – LUAR-style multi-document author episodes with self-attention + max-pooling over document windows.
-- `stel` – STEL-style contrastive authorship verification with content-controlled triplets.
-- `standard` – the existing query/candidate InfoNCE baseline (default).
+- `part` – an AuthBench-adapted PART recipe: the base encoder is frozen by default, a
+  BiLSTM head is trained over token states, and same-author document pairs are optimized
+  with a PART-style learnable-temperature contrastive objective. Evaluation remains
+  document-level, so every query/candidate gets one embedding. (https://arxiv.org/pdf/2209.15373)
+- `luar` – an AuthBench-adapted LUAR recipe: each author is represented by variable-size
+  episodes of `32`-token windows, self-attention + max-pooling aggregate windows into an
+  authorship embedding, and training uses supervised contrastive learning over two
+  sampled episodes per author. At evaluation time, one document embedding is built from
+  all `32`-token windows in the document by default, optionally capped for runtime.
+  (https://aclanthology.org/2021.emnlp-main.70.pdf)
+- `stel` – an AuthBench-adapted STEL/CAV-style recipe: the encoder is tuned with a
+  content-controlled triplet objective where negatives are chosen from the same
+  `source+genre`, then same `source`, then same `genre`, before falling back to a random
+  different-author negative. The public method name stays `stel`, but this is a training
+  recipe inspired by the paper's content-control setup rather than the STEL evaluation
+  framework itself. (https://aclanthology.org/2022.repl4nlp-1.26.pdf)
+- `standard` – the query/candidate InfoNCE baseline (default) and the recommended control
+  recipe for direct comparison to the authorship-specific adaptations.
 
 Example: fine-tune and evaluate `bge-base-en-v1.5` with periodic metrics:
 
@@ -262,9 +276,23 @@ Useful flags:
 - `--query-prefix/--doc-prefix` to add model-specific prompts (e.g., E5's `query:` /
   `passage:`).
 - `--max-eval-queries/--max-eval-candidates` to cap evaluation size.
-- `--authorship-method part|luar|stel` to switch from the default query/candidate loss to
-  one of the authorship-specific training recipes.
+- `--authorship-method standard|part|luar|stel` to switch between the baseline and the
+  three authorship-specific training recipes.
 - `--max-train-authors` to cap author-centric training for PART/LUAR/STEL.
+- `--part-freeze-encoder` / `--part-train-encoder` to keep PART paper-aligned by
+  freezing the encoder by default, or explicitly allow encoder tuning.
+- `--part-temperature-init` to set PART's learnable temperature/logit-scale
+  initialization.
+- `--luar-window-size` to control LUAR's excerpt length (defaults to `32` total tokens).
+- `--luar-episode-length` and `--luar-samples-per-author` to control LUAR's
+  supervised-contrastive episode construction.
+- `--luar-max-eval-windows` to cap LUAR's eval-time full-document window aggregation for
+  long documents. If omitted, LUAR uses every `32`-token window in the document.
+- `--luar-max-episode-docs` / `--luar-eval-episode-docs` remain accepted as backward-compatible
+  aliases for the newer LUAR flags.
+- `--stel-control-keys` to change the metadata priority used for STEL/CAV-style
+  content control. The default order is `source genre`, which yields
+  `source+genre -> source -> genre -> random`.
 - `--negatives-per-query` and `--negative-strategy` to balance attribution EER runtime.
 - `--trust-remote-code` to pre-approve HF repos that ship custom modeling code
   (scripts will also auto-retry with `trust_remote_code=True` when transformers
@@ -286,7 +314,13 @@ Useful flags:
 Scripts:
 - `eval/scripts/train_model.sh <model-name>` – run one model for 1 epoch with mid-epoch eval and LoRA (rank 16 by default; override with `LORA_RANK`). Results are written under `eval/results/training_summary/<model>/`.
 - `eval/scripts/train_all_models.sh` – train the default top-2 models per group (LLM-base, LLM-instruct, Embedding, Embedding-instruct) with LoRA rank 16. Override the list with `MODELS="m1 m2 ..."`.
-- `eval/scripts/train_eval_authorship_methods.sh` – train and evaluate `part`, `luar`, and `stel` on a single base model (defaults to `qwen3-emb-4b`) with LoRA rank 16.
+- `eval/scripts/train_eval_authorship_methods.sh` – train and evaluate `standard`, `part`,
+  `luar`, and `stel` on a single base model (defaults to `qwen3-emb-4b`) using one
+  consistent AuthBench dataset root for direct comparison.
 - `eval/scripts/eval_all_models.sh` – evaluate a broad set of embedding models (or override via `MODELS="m1 m2"`) and store per-model JSON outputs with fine-grained breakdowns for leaderboard building.
 Checkpoints are saved under `--output-dir/<model>` with a `training_summary.json` that
 captures the final dev/test metrics for quick comparison to pre-trained baselines.
+
+For historical result folders, note that older authorship-method runs and the generic
+`train_model.sh` workflow may not be directly comparable if they used a different
+dataset root, batch regime, or pre-adaptation LUAR/STEL defaults.

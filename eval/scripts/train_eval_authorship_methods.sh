@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Train and evaluate PART, LUAR, and STEL on a single base model.
+# Train and evaluate the standard baseline plus PART, LUAR, and STEL on a single base model.
 # Run from the repository root (AuthBench).
 set -euo pipefail
 
@@ -9,7 +9,7 @@ export PYTHONPATH="$(pwd):${PYTHONPATH:-}"
 
 DATASET_ROOT="${DATASET_ROOT:-processing/outputs/authbench}"
 BASE_MODEL="${BASE_MODEL:-qwen3-emb-4b}"
-METHODS_STR="${METHODS:-part luar stel}"
+METHODS_STR="${METHODS:-standard part luar stel}"
 OUTPUT_DIR="${OUTPUT_DIR:-eval/results/authorship_methods}"
 LOG_DIR="${LOG_DIR:-${OUTPUT_DIR}/logs}"
 
@@ -28,18 +28,21 @@ LORA_DROPOUT="${LORA_DROPOUT:-0.0}"
 LORA_TARGET_MODULES="${LORA_TARGET_MODULES:-all-linear}"
 
 PART_HIDDEN_SIZE="${PART_HIDDEN_SIZE:-512}"
+PART_FREEZE_ENCODER="${PART_FREEZE_ENCODER:-1}"
+PART_TEMPERATURE_INIT="${PART_TEMPERATURE_INIT:-0.07}"
 LUAR_WINDOW_SIZE="${LUAR_WINDOW_SIZE:-32}"
-LUAR_MAX_EPISODE_DOCS="${LUAR_MAX_EPISODE_DOCS:-4}"
-LUAR_EVAL_EPISODE_DOCS="${LUAR_EVAL_EPISODE_DOCS:-4}"
+LUAR_EPISODE_LENGTH="${LUAR_EPISODE_LENGTH:-${LUAR_MAX_EPISODE_DOCS:-16}}"
+LUAR_SAMPLES_PER_AUTHOR="${LUAR_SAMPLES_PER_AUTHOR:-2}"
+LUAR_MAX_EVAL_WINDOWS="${LUAR_MAX_EVAL_WINDOWS:-${LUAR_EVAL_EPISODE_DOCS:-}}"
 LUAR_EMBEDDING_SIZE="${LUAR_EMBEDDING_SIZE:-512}"
 LUAR_TEMPERATURE="${LUAR_TEMPERATURE:-0.01}"
 STEL_MARGIN="${STEL_MARGIN:-0.5}"
-STEL_CONTROL_KEYS="${STEL_CONTROL_KEYS:-genre source}"
+STEL_CONTROL_KEYS="${STEL_CONTROL_KEYS:-source genre}"
 
 SKIP_CHECKPOINT="${SKIP_CHECKPOINT:-1}"
 TRUST_REMOTE_CODE="${TRUST_REMOTE_CODE:-1}"
 
-WANDB_PROJECT="${WANDB_PROJECT:-AuthBench}"
+WANDB_PROJECT="${WANDB_PROJECT-AuthBench}"
 WANDB_ENTITY="${WANDB_ENTITY:-}"
 WANDB_RUN_PREFIX="${WANDB_RUN_PREFIX:-authorship-methods}"
 WANDB_TAGS="${WANDB_TAGS:-AuthBench authorship-methods}"
@@ -59,7 +62,7 @@ for METHOD in "${METHOD_LIST[@]}"; do
   METHOD_OUTPUT_DIR="${OUTPUT_DIR}/${METHOD}"
   RUN_DIR="${METHOD_OUTPUT_DIR}/${BASE_MODEL}"
   LOG_PATH="${LOG_DIR}/${BASE_MODEL}-${METHOD}.log"
-  mkdir -p "${METHOD_OUTPUT_DIR}"
+  mkdir -p "${METHOD_OUTPUT_DIR}" "${RUN_DIR}" "$(dirname "${LOG_PATH}")"
 
   log "Training/evaluating method=${METHOD} base_model=${BASE_MODEL}"
 
@@ -85,17 +88,20 @@ for METHOD in "${METHOD_LIST[@]}"; do
     --lora-dropout "${LORA_DROPOUT}"
     --lora-target-modules "${LORA_TARGET_MODULES}"
     --part-hidden-size "${PART_HIDDEN_SIZE}"
+    --part-temperature-init "${PART_TEMPERATURE_INIT}"
     --luar-window-size "${LUAR_WINDOW_SIZE}"
-    --luar-max-episode-docs "${LUAR_MAX_EPISODE_DOCS}"
-    --luar-eval-episode-docs "${LUAR_EVAL_EPISODE_DOCS}"
+    --luar-episode-length "${LUAR_EPISODE_LENGTH}"
+    --luar-samples-per-author "${LUAR_SAMPLES_PER_AUTHOR}"
     --luar-embedding-size "${LUAR_EMBEDDING_SIZE}"
     --luar-temperature "${LUAR_TEMPERATURE}"
     --stel-margin "${STEL_MARGIN}"
     --stel-control-keys ${STEL_CONTROL_KEYS}
-    --wandb-project "${WANDB_PROJECT}"
-    --wandb-run-name "${WANDB_RUN_PREFIX}-${BASE_MODEL}-${METHOD}"
   )
 
+  if [[ -n "${WANDB_PROJECT}" ]]; then
+    CMD+=(--wandb-project "${WANDB_PROJECT}")
+    CMD+=(--wandb-run-name "${WANDB_RUN_PREFIX}-${BASE_MODEL}-${METHOD}")
+  fi
   if [[ -n "${WANDB_ENTITY}" ]]; then
     CMD+=(--wandb-entity "${WANDB_ENTITY}")
   fi
@@ -110,6 +116,14 @@ for METHOD in "${METHOD_LIST[@]}"; do
   fi
   if [[ -n "${LORA_ALPHA:-}" ]]; then
     CMD+=(--lora-alpha "${LORA_ALPHA}")
+  fi
+  if [[ "${PART_FREEZE_ENCODER}" != "0" ]]; then
+    CMD+=(--part-freeze-encoder)
+  else
+    CMD+=(--part-train-encoder)
+  fi
+  if [[ -n "${LUAR_MAX_EVAL_WINDOWS}" ]]; then
+    CMD+=(--luar-max-eval-windows "${LUAR_MAX_EVAL_WINDOWS}")
   fi
   if [[ -n "${LORA_BIAS:-}" ]]; then
     CMD+=(--lora-bias "${LORA_BIAS}")
